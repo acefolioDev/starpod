@@ -1,6 +1,6 @@
 {
   "name": "starpod",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "description": "Atlas-owned routes and pods for Elysia on Bun. TypeScript only. No decorators.",
   "type": "module",
@@ -14,14 +14,26 @@
   "bugs": {
     "url": "https://github.com/acefolioDev/starpod/issues"
   },
-  "keywords": ["bun", "elysia", "atlas", "pod", "typescript"],
+  "keywords": [
+    "bun",
+    "elysia",
+    "atlas",
+    "pod",
+    "typescript"
+  ],
   "exports": {
     ".": "./src/kernel/index.ts"
   },
   "bin": {
     "starpod": "src/cli/starpod.ts"
   },
-  "files": ["src/kernel", "src/cli", "template", "README.md", "LICENSE"],
+  "files": [
+    "src/kernel",
+    "src/cli",
+    "template",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "postinstall": "bun src/cli/postinstall.ts",
     "seal": "bun src/cli/starpod.ts seal"
