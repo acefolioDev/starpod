@@ -1,0 +1,18 @@
+{
+  "name": "elysia-atlas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/main.ts",
+    "start": "bun src/main.ts",
+    "seal": "bun src/kernel/seal.ts"
+  },
+  "dependencies": {
+    "elysia": "^1.4.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.0"
+  }
+}
