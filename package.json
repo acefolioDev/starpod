@@ -14,17 +14,17 @@
   "bugs": {
     "url": "https://github.com/acefolioDev/starpod/issues"
   },
-  "keywords": [
-    "bun",
-    "elysia",
-    "atlas",
-    "pod",
-    "typescript"
-  ],
+  "keywords": ["bun", "elysia", "atlas", "pod", "typescript"],
+  "exports": {
+    ".": "./src/kernel/index.ts"
+  },
+  "bin": {
+    "starpod": "./src/cli/starpod.ts"
+  },
+  "files": ["src/kernel", "src/cli", "template", "README.md", "LICENSE"],
   "scripts": {
-    "dev": "bun --watch src/main.ts",
-    "start": "bun src/main.ts",
-    "seal": "bun src/kernel/seal.ts"
+    "postinstall": "bun src/cli/postinstall.ts",
+    "seal": "bun src/cli/starpod.ts seal"
   },
   "dependencies": {
     "elysia": "^1.4.0"

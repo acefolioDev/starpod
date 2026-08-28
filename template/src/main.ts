@@ -1,9 +1,7 @@
-import { bootstrap } from "@kernel/index";
+import { bootstrap } from "starpod";
 import { app } from "./app";
 
 const server = await bootstrap(app);
-
-server.get("/health", () => ({ ok: true }));
 
 const port = Number(Bun.env.PORT ?? 3000);
 server.listen(port);

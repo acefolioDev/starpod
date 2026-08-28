@@ -1,4 +1,4 @@
-import { application } from "@kernel/index";
+import { application } from "starpod";
 import { hello } from "@features/hello/hello.pod";
 import { Clock } from "@infra/clock";
 

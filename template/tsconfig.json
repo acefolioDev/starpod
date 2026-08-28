@@ -14,7 +14,11 @@
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "baseUrl": "."
+    "baseUrl": ".",
+    "paths": {
+      "@features/*": ["src/features/*"],
+      "@infra/*": ["src/infra/*"]
+    }
   },
-  "include": ["src/kernel", "src/cli"]
+  "include": ["src"]
 }

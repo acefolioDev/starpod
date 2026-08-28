@@ -2,35 +2,46 @@
 
 Atlas-owned routes. Pods, not modules. TypeScript only. No decorators.
 
-Elysia is a runtime dependency — you do not write Elysia in feature code.
+```bash
+mkdir my-app && cd my-app
+bun init -y
+bun add --trust starpod
+bun run dev
+```
+
+Bun does not run install scripts unless the package is trusted, so `--trust` is required for the hello app to appear. That copies **your** app only — atlas, pods, hello. There is no `kernel/` in your project. You import from `"starpod"`.
+
+If you already added the package without `--trust`:
 
 ```bash
-bun add starpod
+bunx starpod init
 ```
 
 Repo: [acefolioDev/starpod](https://github.com/acefolioDev/starpod)
 
-## Layout
+## What you get
 
 ```
 src/
   main.ts
-  app.ts                      # application({ features, infra })
-  kernel/
-  infra/                      # clock, db, redis — never import features
-  features/
-    hello/
-      hello.atlas.ts          # required — stars, not Laravel routes.ts
-      hello.controller.ts     # required
-      hello.service.ts        # required
-      hello.pod.ts            # required — pod()
+  app.ts
+  infra/clock.ts
+  features/hello/
+    hello.atlas.ts
+    hello.controller.ts
+    hello.service.ts
+    hello.pod.ts
 ```
 
-Every file in a feature folder must be `{name}.{role}.ts`. Extra roles (`repository`, `schema`, `policy`, …) are allowed. Nested folders are not. JavaScript sources under `src/` fail the seal.
+GET `/hello` — the atlas is lit.
+
+## Layout rules
+
+Every feature file is `{name}.{role}.ts`. Atlas, controller, service, and pod are required. Extra roles are allowed. Nested folders and JavaScript sources fail the seal.
 
 ## Atlas
 
-Stars are operations. `list` / `show` / `create` / `update` / `remove` are not the default. Conventional REST is opt-in:
+Stars are operations. Conventional REST is opt-in via `canon()`:
 
 ```ts
 stars: {
@@ -39,20 +50,16 @@ stars: {
 }
 ```
 
-`canon()` expands once when the atlas is built. The request path is a normal Elysia handler.
-
 ## DI
 
 ```ts
+import { pod } from "starpod";
+
 export class HelloController {
   static readonly needs = [HelloService] as const;
   constructor(private readonly hello: HelloService) {}
 }
-```
 
-Wire the pod in `{name}.pod.ts`:
-
-```ts
 export const hello = pod({
   atlas: HelloAtlas,
   controller: HelloController,
@@ -63,7 +70,6 @@ export const hello = pod({
 ## Run
 
 ```bash
-bun install
 bun run dev
 bun run seal
 ```

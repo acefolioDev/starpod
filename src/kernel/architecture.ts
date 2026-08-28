@@ -22,12 +22,16 @@ export class ArchitectureError extends Error {
 }
 
 const REQUIRED = ["atlas.ts", "controller.ts", "service.ts", "pod.ts"] as const;
-const SRC = join(import.meta.dir, "..");
+
+function projectSrc() {
+  return join(process.cwd(), "src");
+}
 
 export async function sealArchitecture(app?: Application) {
   const violations: string[] = [];
+  const SRC = projectSrc();
 
-  await rejectJavaScript(join(SRC), violations);
+  await rejectJavaScript(SRC, violations);
   const folders = await sealFeatures(join(SRC, "features"), violations);
   await sealInfra(join(SRC, "infra"), violations);
 
@@ -112,7 +116,7 @@ async function sealFeatures(root: string, violations: string[]): Promise<string[
     for (const file of files.filter((f) => f.endsWith(".ts"))) {
       const source = await Bun.file(join(dir, file)).text();
       if (/\bfrom\s+["']elysia["']/.test(source) || /\bfrom\s+["']elysia\//.test(source)) {
-        violations.push(`${name}/${file} must not import elysia — use @kernel`);
+        violations.push(`${name}/${file} must not import elysia — import from "starpod"`);
       }
       if (/\bnew\s+Elysia\b/.test(source) || /\.listen\(/.test(source)) {
         violations.push(`${name}/${file} must not create or listen on an Elysia app`);
@@ -202,5 +206,5 @@ function ownHandlers(proto: Record<string, unknown>) {
 }
 
 function rel(file: string) {
-  return relative(join(SRC, ".."), file);
+  return relative(process.cwd(), file);
 }
