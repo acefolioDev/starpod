@@ -19,7 +19,7 @@
     ".": "./src/kernel/index.ts"
   },
   "bin": {
-    "starpod": "./src/cli/starpod.ts"
+    "starpod": "src/cli/starpod.ts"
   },
   "files": ["src/kernel", "src/cli", "template", "README.md", "LICENSE"],
   "scripts": {
