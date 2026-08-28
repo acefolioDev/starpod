@@ -24,6 +24,8 @@ export async function scaffold(target: string) {
   const tsconfigDest = join(target, "tsconfig.json");
   if (!(await Bun.file(tsconfigDest).exists())) {
     await cp(join(templateRoot, "tsconfig.json"), tsconfigDest);
+  } else {
+    await patchTsconfig(tsconfigDest);
   }
 
   const gitignoreDest = join(target, ".gitignore");
@@ -32,14 +34,32 @@ export async function scaffold(target: string) {
     await cp(gitignoreSrc, gitignoreDest);
   }
 
-  await mergeScripts(pkgPath);
+  await mergePackage(pkgPath, target);
   console.log("\n  ◆  starpod project ready — hello is lit\n  │    bun run dev\n");
 }
 
-async function mergeScripts(pkgPath: string) {
+async function patchTsconfig(path: string) {
+  const raw = JSON.parse(await readFile(path, "utf8")) as {
+    compilerOptions?: Record<string, unknown>;
+  };
+  const opts = raw.compilerOptions;
+  if (!opts) return;
+
+  const types = opts.types;
+  if (Array.isArray(types) && types.includes("bun-types")) {
+    opts.types = ["bun"];
+  }
+  if ("baseUrl" in opts) {
+    delete opts.baseUrl;
+  }
+  await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`);
+}
+
+async function mergePackage(pkgPath: string, target: string) {
   if (!(await Bun.file(pkgPath).exists())) return;
   const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as {
     scripts?: Record<string, string>;
+    devDependencies?: Record<string, string>;
   };
   pkg.scripts = {
     ...pkg.scripts,
@@ -47,7 +67,23 @@ async function mergeScripts(pkgPath: string) {
     start: pkg.scripts?.start ?? "bun src/main.ts",
     seal: pkg.scripts?.seal ?? "starpod seal",
   };
+  pkg.devDependencies = {
+    ...pkg.devDependencies,
+    "@types/bun": pkg.devDependencies?.["@types/bun"] ?? "^1.4.0",
+    "bun-types": pkg.devDependencies?.["bun-types"] ?? "^1.4.0",
+    typescript: pkg.devDependencies?.typescript ?? "^5.9.0",
+  };
   await writeFile(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
+
+  const missing: string[] = [];
+  for (const name of ["@types/bun", "bun-types", "typescript"] as const) {
+    if (!(await Bun.file(join(target, "node_modules", name, "package.json")).exists())) {
+      missing.push(name);
+    }
+  }
+  if (missing.length === 0) return;
+
+  await Bun.$`bun add -d ${missing}`.cwd(target);
 }
 
 export async function findInstallTarget(starpodRoot: string): Promise<string | null> {

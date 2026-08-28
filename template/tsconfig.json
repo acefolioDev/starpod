@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ESNext"],
-    "types": ["bun-types"],
+    "types": ["bun"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
@@ -14,10 +14,9 @@
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "baseUrl": ".",
     "paths": {
-      "@features/*": ["src/features/*"],
-      "@infra/*": ["src/infra/*"]
+      "@features/*": ["./src/features/*"],
+      "@infra/*": ["./src/infra/*"]
     }
   },
   "include": ["src"]
