@@ -38,8 +38,15 @@ export async function scaffold(target: string) {
   console.log("\n  ◆  starpod project ready — hello is lit\n  │    bun run dev\n");
 }
 
+function parseJsonc(text: string): unknown {
+  const stripped = text
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  return JSON.parse(stripped);
+}
+
 async function patchTsconfig(path: string) {
-  const raw = JSON.parse(await readFile(path, "utf8")) as {
+  const raw = parseJsonc(await readFile(path, "utf8")) as {
     compilerOptions?: Record<string, unknown>;
   };
   const opts = raw.compilerOptions;
