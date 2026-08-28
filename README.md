@@ -1,6 +1,14 @@
-# Elysia Atlas
+# Starpod
 
-TypeScript only. Features own folders. Atlas owns paths. No decorators.
+Atlas-owned routes. Pods, not modules. TypeScript only. No decorators.
+
+Elysia is a runtime dependency — you do not write Elysia in feature code.
+
+```bash
+bun add starpod
+```
+
+Repo: [acefolioDev/starpod](https://github.com/acefolioDev/starpod)
 
 ## Layout
 
