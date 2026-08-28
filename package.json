@@ -1,6 +1,6 @@
 {
   "name": "starpod",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": false,
   "description": "Atlas-owned routes and pods for Elysia on Bun. TypeScript only. No decorators.",
   "type": "module",
