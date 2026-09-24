@@ -1,7 +1,14 @@
 export type Constructor<T = unknown> = new (...args: never[]) => T;
 
+/**
+ * A class that can be created by the container.
+ *
+ * TypeScript does not emit constructor parameter types at runtime. Keeping the
+ * dependency list beside the class is therefore the honest, decorator-free
+ * way to describe constructor injection.
+ */
 export type Injectable<T = unknown> = Constructor<T> & {
-  readonly needs?: readonly Constructor[];
+  readonly inject?: readonly Constructor[];
 };
 
 export class GraphError extends Error {
@@ -11,37 +18,62 @@ export class GraphError extends Error {
   }
 }
 
-export function construct(
-  ctor: Injectable,
-  cache: Map<Constructor, unknown>,
-  allowed: Set<Constructor>,
-  stack: Constructor[] = [],
-): unknown {
-  const cached = cache.get(ctor);
-  if (cache.has(ctor)) return cached;
+export class Container {
+  private readonly providers = new Set<Constructor>();
+  private readonly instances = new Map<Constructor, unknown>();
 
-  if (stack.includes(ctor)) {
-    const cycle = [...stack, ctor].map((c) => c.name).join(" -> ");
-    throw new GraphError(`circular needs: ${cycle}`);
+  constructor(
+    providers: readonly Injectable[] = [],
+    private readonly parent?: Container,
+  ) {
+    for (const provider of providers) this.register(provider);
   }
 
-  if (!allowed.has(ctor) && !cache.has(ctor)) {
-    throw new GraphError(
-      `${ctor.name} is not registered. Add it to feature.register, application.infra, or uses.`,
-    );
+  register(...providers: readonly Injectable[]) {
+    for (const provider of providers) this.providers.add(provider);
+    return this;
   }
 
-  const needs = ctor.needs ?? [];
-  if (needs.length !== ctor.length) {
-    throw new GraphError(
-      `${ctor.name}: needs.length (${needs.length}) must match constructor parameters (${ctor.length})`,
-    );
+  scope(providers: readonly Injectable[] = []) {
+    return new Container(providers, this);
   }
 
-  const next = [...stack, ctor];
-  const deps = needs.map((need) => construct(need, cache, allowed, next));
-  const Klass = ctor as unknown as new (...args: unknown[]) => unknown;
-  const instance = new Klass(...deps);
-  cache.set(ctor, instance);
-  return instance;
+  resolve<T>(ctor: Injectable<T>): T {
+    return this.build(ctor, []);
+  }
+
+  private build<T>(ctor: Injectable<T>, stack: Constructor[]): T {
+    const owner = this.ownerOf(ctor);
+    if (!owner) {
+      throw new GraphError(
+        `${ctor.name} is not registered. Add it to feature.providers or application.providers.`,
+      );
+    }
+
+    const cached = owner.instances.get(ctor);
+    if (cached !== undefined || owner.instances.has(ctor)) return cached as T;
+
+    if (stack.includes(ctor)) {
+      const cycle = [...stack, ctor].map((item) => item.name).join(" -> ");
+      throw new GraphError(`circular dependency: ${cycle}`);
+    }
+
+    const dependencies = ctor.inject ?? [];
+    if (dependencies.length !== ctor.length) {
+      throw new GraphError(
+        `${ctor.name}: inject.length (${dependencies.length}) must match constructor parameters (${ctor.length})`,
+      );
+    }
+
+    const next = [...stack, ctor];
+    const args = dependencies.map((dependency) => this.build(dependency, next));
+    const instance = new (ctor as unknown as new (...args: unknown[]) => T)(...args);
+    owner.instances.set(ctor, instance);
+    return instance;
+  }
+
+  private ownerOf(ctor: Constructor): Container | undefined {
+    if (this.providers.has(ctor)) return this;
+    return this.parent?.ownerOf(ctor);
+  }
 }

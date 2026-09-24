@@ -15,7 +15,7 @@ if (command === "seal") {
     app: Parameters<typeof sealArchitecture>[0];
   };
   await sealArchitecture(mod.app);
-  console.log("\n  ◆  architecture sealed — TypeScript features, atlas-owned paths.\n");
+  console.log("\n  ◆  architecture sealed — explicit DI, native Elysia routes.\n");
 } else if (command === "init") {
   await scaffold(process.cwd());
 } else {

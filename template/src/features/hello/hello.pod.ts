@@ -1,10 +1,10 @@
 import { pod } from "starpod";
-import { HelloAtlas } from "./hello.atlas";
 import { HelloController } from "./hello.controller";
 import { HelloService } from "./hello.service";
 
 export const hello = pod({
-  atlas: HelloAtlas,
+  name: "hello",
+  prefix: "/hello",
   controller: HelloController,
-  register: [HelloService],
+  providers: [HelloService],
 });

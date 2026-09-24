@@ -4,5 +4,5 @@ import { Clock } from "@infra/clock";
 
 export const app = application({
   features: [hello],
-  infra: [Clock],
+  providers: [Clock],
 });

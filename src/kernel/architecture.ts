@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
 import type { Application, Feature } from "./feature";
-import { construct, type Constructor, type Injectable } from "./di";
+import { Container, GraphError, type Injectable } from "./di";
 
 export class ArchitectureError extends Error {
   constructor(violations: string[]) {
@@ -9,10 +9,9 @@ export class ArchitectureError extends Error {
       [
         "",
         "◆  architecture seal failed",
-        "│  this project is easy on purpose — and strict on purpose.",
-        "│  TypeScript only. Features own folders. Atlas owns paths.",
+        "│  simple boundaries, explicit dependencies, native Elysia routes.",
         "│",
-        ...violations.map((v) => `│  ✕  ${v}`),
+        ...violations.map((violation) => `│  ✕  ${violation}`),
         "◆",
         "",
       ].join("\n"),
@@ -21,7 +20,7 @@ export class ArchitectureError extends Error {
   }
 }
 
-const REQUIRED = ["atlas.ts", "controller.ts", "service.ts", "pod.ts"] as const;
+const REQUIRED = ["controller.ts", "pod.ts"] as const;
 
 function projectSrc() {
   return join(process.cwd(), "src");
@@ -29,22 +28,18 @@ function projectSrc() {
 
 export async function sealArchitecture(app?: Application) {
   const violations: string[] = [];
-  const SRC = projectSrc();
+  const src = projectSrc();
 
-  await rejectJavaScript(SRC, violations);
-  const folders = await sealFeatures(join(SRC, "features"), violations);
-  await sealInfra(join(SRC, "infra"), violations);
+  await rejectJavaScript(src, violations);
+  const folders = await sealFeatures(join(src, "features"), violations);
+  await sealInfra(join(src, "infra"), violations);
 
   if (app) {
     assertWired(app, folders, violations);
-    for (const feat of app.features) {
-      assertFeatureGraph(feat, app, violations);
-    }
+    for (const feature of app.features) assertFeatureGraph(feature, app, violations);
   }
 
-  if (violations.length > 0) {
-    throw new ArchitectureError(violations);
-  }
+  if (violations.length > 0) throw new ArchitectureError(violations);
 }
 
 async function rejectJavaScript(root: string, violations: string[]) {
@@ -56,9 +51,7 @@ async function rejectJavaScript(root: string, violations: string[]) {
       await rejectJavaScript(path, violations);
       continue;
     }
-    if (/\.(js|mjs|cjs)$/.test(entry.name)) {
-      violations.push(`${rel(path)} — TypeScript only. We are not friends with JavaScript sources.`);
-    }
+    if (/\.(js|mjs|cjs)$/.test(entry.name)) violations.push(`${rel(path)} — TypeScript only.`);
   }
 }
 
@@ -77,7 +70,7 @@ async function sealFeatures(root: string, violations: string[]): Promise<string[
     features.push(entry.name);
   }
 
-  if (features.length === 0 && !violations.some((v) => v.includes("src/features is missing"))) {
+  if (features.length === 0 && !violations.some((violation) => violation.includes("src/features is missing"))) {
     violations.push("src/features must contain at least one feature folder");
   }
 
@@ -88,38 +81,19 @@ async function sealFeatures(root: string, violations: string[]): Promise<string[
 
     const dir = join(root, name);
     const children = await readdir(dir, { withFileTypes: true });
-    for (const child of children) {
-      if (child.isDirectory()) {
-        violations.push(`${name}/ must be flat — no nested folders (found ${child.name}/)`);
-      }
-    }
+    if (children.some((child) => child.isDirectory())) violations.push(`${name}/ must be flat — no nested folders`);
 
-    const files = children.filter((c) => c.isFile()).map((c) => c.name);
-
+    const files = children.filter((child) => child.isFile()).map((child) => child.name);
     for (const suffix of REQUIRED) {
       const expected = `${name}.${suffix}`;
-      if (!files.includes(expected)) {
-        violations.push(`${name}/ is missing required file ${expected}`);
-      }
+      if (!files.includes(expected)) violations.push(`${name}/ is missing required file ${expected}`);
     }
 
     for (const file of files) {
       if (!file.endsWith(".ts")) {
         violations.push(`${name}/ only .ts files are allowed (found ${file})`);
-        continue;
-      }
-      if (!file.startsWith(`${name}.`)) {
+      } else if (!file.startsWith(`${name}.`)) {
         violations.push(`${name}/ every file must start with "${name}." (found ${file})`);
-      }
-    }
-
-    for (const file of files.filter((f) => f.endsWith(".ts"))) {
-      const source = await Bun.file(join(dir, file)).text();
-      if (/\bfrom\s+["']elysia["']/.test(source) || /\bfrom\s+["']elysia\//.test(source)) {
-        violations.push(`${name}/${file} must not import elysia — import from "starpod"`);
-      }
-      if (/\bnew\s+Elysia\b/.test(source) || /\.listen\(/.test(source)) {
-        violations.push(`${name}/${file} must not create or listen on an Elysia app`);
       }
     }
   }
@@ -144,65 +118,31 @@ async function sealInfra(root: string, violations: string[]) {
 }
 
 function assertWired(app: Application, folders: string[], violations: string[]) {
-  const wired = new Set(app.features.map((f) => f.atlas.name));
+  const wired = new Set(app.features.map((feature) => feature.name));
   for (const folder of folders) {
-    if (!wired.has(folder)) {
-      violations.push(`feature folder "${folder}" is not in application({ features })`);
-    }
+    if (!wired.has(folder)) violations.push(`feature folder "${folder}" is not in application({ features })`);
   }
   for (const name of wired) {
-    if (!folders.includes(name)) {
-      violations.push(`application wires "${name}" but src/features/${name} does not exist`);
-    }
+    if (!folders.includes(name)) violations.push(`application wires "${name}" but src/features/${name} does not exist`);
   }
 }
 
-function assertFeatureGraph(feat: Feature, app: Application, violations: string[]) {
-  const prefix = feat.atlas.name;
-  const starKeys = Object.keys(feat.atlas.stars);
-  const proto = feat.controller.prototype as Record<string, unknown>;
-  const handlers = ownHandlers(proto);
-
-  const missing = starKeys.filter((key) => typeof proto[key] !== "function");
-  const orphans = handlers.filter((key) => !(key in feat.atlas.stars));
-  if (missing.length) {
-    violations.push(`${prefix}: stars with no handler: ${missing.join(", ")}`);
-  }
-  if (orphans.length) {
-    violations.push(`${prefix}: handlers with no star: ${orphans.join(", ")}`);
+function assertFeatureGraph(feature: Feature, app: Application, violations: string[]) {
+  if (typeof feature.controller.prototype.routes !== "function") {
+    violations.push(`${feature.name}: controller must define routes(app)`);
   }
 
-  const infra = app.infra as Injectable[];
-  const allowed = new Set<Constructor>([
-    feat.controller,
-    ...feat.register,
-    ...feat.uses,
-    ...infra,
-  ]);
-  const cache = new Map<Constructor, unknown>();
+  const container = new Container(app.providers).scope([
+    ...feature.uses,
+    ...feature.providers,
+    feature.controller,
+  ] as readonly Injectable[]);
   try {
-    for (const ctor of infra) {
-      construct(ctor, cache, new Set(infra), []);
-    }
-    construct(feat.controller, cache, allowed, []);
-  } catch (err) {
-    violations.push(`${prefix}: ${err instanceof Error ? err.message : String(err)}`);
+    container.resolve(feature.controller);
+  } catch (error) {
+    const message = error instanceof GraphError || error instanceof Error ? error.message : String(error);
+    violations.push(`${feature.name}: ${message}`);
   }
-}
-
-function ownHandlers(proto: Record<string, unknown>) {
-  const names: string[] = [];
-  let current: object | null = proto;
-  while (current && current !== Object.prototype) {
-    for (const name of Object.getOwnPropertyNames(current)) {
-      if (name === "constructor") continue;
-      if (typeof (current as Record<string, unknown>)[name] === "function") {
-        names.push(name);
-      }
-    }
-    current = Object.getPrototypeOf(current);
-  }
-  return names;
 }
 
 function rel(file: string) {

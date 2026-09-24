@@ -1,53 +1,26 @@
 import { Elysia } from "elysia";
 import { sealArchitecture } from "./architecture";
-import { construct, type Constructor } from "./di";
+import { Container } from "./di";
 import type { Application } from "./feature";
-import { printAtlas, type AtlasPrintRow } from "./print";
-
-type HttpVerb = "get" | "post" | "put" | "patch" | "delete";
+import { printFeatures } from "./print";
 
 export async function bootstrap(app: Application) {
   await sealArchitecture(app);
 
-  const elysia = new Elysia({ name: "atlas" });
-  const cache = new Map<Constructor, unknown>();
-  const infraSet = new Set<Constructor>(app.infra);
-  for (const ctor of app.infra) {
-    construct(ctor, cache, infraSet);
-  }
+  const elysia = new Elysia({ name: "starpod" });
+  const root = new Container(app.providers);
 
-  const rows: AtlasPrintRow[] = [];
-
-  for (const feat of app.features) {
-    const allowed = new Set<Constructor>([
-      feat.controller,
-      ...feat.register,
-      ...feat.uses,
-      ...app.infra,
+  for (const feature of app.features) {
+    const container = root.scope([
+      ...feature.uses,
+      ...feature.providers,
+      feature.controller,
     ]);
-    const instance = construct(feat.controller, cache, allowed) as Record<string, unknown>;
+    const controller = container.resolve(feature.controller);
 
-    elysia.group(feat.atlas.prefix, (group) => {
-      for (const [key, s] of Object.entries(feat.atlas.stars)) {
-        const handler = (instance[key] as Function).bind(instance);
-        const verb = s.method as HttpVerb;
-        const options = s.body ? { body: s.body } : {};
-        (group[verb] as Function)(s.path, handler, options);
-      }
-      return group;
-    });
-
-    rows.push({
-      name: feat.atlas.name,
-      prefix: feat.atlas.prefix,
-      stars: Object.entries(feat.atlas.stars).map(([key, s]) => ({
-        key,
-        method: s.method,
-        path: s.path,
-      })),
-    });
+    elysia.group(feature.prefix, (group) => controller.routes(group));
   }
 
-  printAtlas(rows);
+  printFeatures(app.features);
   return elysia;
 }
