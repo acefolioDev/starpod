@@ -1,8 +1,13 @@
-import type { AnyElysia } from "elysia";
-import type { Injectable } from "./di";
+import { providerToken, type Injectable, type Provider } from "./di";
+
+/**
+ * A route registrar keeps its concrete Elysia type in the controller source.
+ * The framework only invokes it with the native grouped Elysia instance.
+ */
+export type NativeRouteRegistrar = (...args: never[]) => unknown;
 
 export type ControllerInstance = {
-  routes(app: AnyElysia): AnyElysia;
+  routes: NativeRouteRegistrar;
 };
 
 export type Controller = Injectable<ControllerInstance> & {
@@ -14,14 +19,14 @@ export type Feature = {
   readonly name: string;
   readonly prefix: `/${string}`;
   readonly controller: Controller;
-  readonly providers: readonly Injectable[];
-  readonly uses: readonly Injectable[];
+  readonly providers: readonly Provider[];
+  readonly uses: readonly Provider[];
 };
 
 export type Application = {
   readonly kind: "application";
   readonly features: readonly Feature[];
-  readonly providers: readonly Injectable[];
+  readonly providers: readonly Provider[];
 };
 
 export type Pod = Feature;
@@ -30,11 +35,11 @@ export function pod(input: {
   name: string;
   prefix: `/${string}`;
   controller: Controller;
-  providers?: readonly Injectable[];
-  uses?: readonly Injectable[];
+  providers?: readonly Provider[];
+  uses?: readonly Provider[];
 }): Feature {
-  if (!input.name || input.name.includes("/") || input.name.includes(".")) {
-    throw new Error(`Feature name must be a simple name (got "${input.name}")`);
+  if (!/^[a-z][a-z0-9]*$/.test(input.name)) {
+    throw new Error(`Feature name must be a single lowercase word (got "${input.name}")`);
   }
   if (!input.prefix.startsWith("/")) {
     throw new Error(`Feature prefix must start with "/"`);
@@ -52,10 +57,18 @@ export function pod(input: {
 
 export function application(input: {
   features: readonly Feature[];
-  providers?: readonly Injectable[];
+  providers?: readonly Provider[];
   /** @deprecated Use providers. Kept for a gentle migration from 0.1.x. */
   infra?: readonly Injectable[];
 }): Application {
+  if (input.features.length === 0) {
+    throw new Error("Application requires at least one feature");
+  }
+
+  assertUnique(input.features.map((feature) => feature.name), "feature name");
+  assertUnique(input.features.map((feature) => feature.prefix), "feature prefix");
+  assertUnique(input.providers ?? input.infra ?? [], "application provider");
+
   return Object.freeze({
     kind: "application",
     features: Object.freeze([...input.features]),
@@ -65,4 +78,21 @@ export function application(input: {
 
 export function featureNames(app: Application): string[] {
   return app.features.map((feature) => feature.name);
+}
+
+function assertUnique(values: readonly (string | Provider)[], label: string) {
+  const seen = new Set<string | ReturnType<typeof providerToken>>();
+  for (const value of values) {
+    const key = typeof value === "string" ? value : providerToken(value);
+    if (seen.has(key)) {
+      const display = typeof value === "string" ? value : providerName(value);
+      throw new Error(`Duplicate ${label}: ${display}`);
+    }
+    seen.add(key);
+  }
+}
+
+function providerName(provider: Provider) {
+  const token = providerToken(provider);
+  return typeof token === "function" ? token.name : token.description ?? "anonymous token";
 }

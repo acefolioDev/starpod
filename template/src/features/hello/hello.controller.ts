@@ -1,4 +1,4 @@
-import { type AnyElysia } from "elysia";
+import type { StarpodElysia } from "starpod";
 import { HelloService } from "./hello.service";
 
 export class HelloController {
@@ -6,7 +6,10 @@ export class HelloController {
 
   constructor(private readonly hello: HelloService) {}
 
-  routes(app: AnyElysia) {
-    return app.get("/", () => this.hello.greet());
+  routes(app: StarpodElysia) {
+    return app.get("/", ({ requestId }) => ({
+      ...this.hello.greet(),
+      requestId,
+    }));
   }
 }

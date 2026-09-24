@@ -65,6 +65,7 @@ async function patchTsconfig(path: string) {
 async function mergePackage(pkgPath: string, target: string) {
   if (!(await Bun.file(pkgPath).exists())) return;
   const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as {
+    dependencies?: Record<string, string>;
     scripts?: Record<string, string>;
     devDependencies?: Record<string, string>;
   };
@@ -80,7 +81,19 @@ async function mergePackage(pkgPath: string, target: string) {
     "bun-types": pkg.devDependencies?.["bun-types"] ?? "^1.4.0",
     typescript: pkg.devDependencies?.typescript ?? "^5.9.0",
   };
+  pkg.dependencies = {
+    ...pkg.dependencies,
+    elysia: pkg.dependencies?.elysia ?? "^1.4.0",
+  };
   await writeFile(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
+
+  const missingDependencies: string[] = [];
+  if (!(await Bun.file(join(target, "node_modules", "elysia", "package.json")).exists())) {
+    missingDependencies.push("elysia");
+  }
+  if (missingDependencies.length > 0) {
+    await Bun.$`bun add ${missingDependencies}`.cwd(target);
+  }
 
   const missing: string[] = [];
   for (const name of ["@types/bun", "bun-types", "typescript"] as const) {

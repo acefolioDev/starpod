@@ -1,0 +1,112 @@
+import { describe, expect, test } from "bun:test";
+import { MemoryCache } from "../src/kernel/cache";
+
+describe("MemoryCache", () => {
+  test("emits value-free operation events without affecting cache behavior", async () => {
+    const events: import("../src/kernel/cache").CacheEvent[] = [];
+    const cache = new MemoryCache({
+      onEvent: (event) => {
+        events.push(event);
+        if (event.operation === "get") throw new Error("observer failure");
+      },
+    });
+
+    expect(cache.get("missing")).toBeUndefined();
+    await cache.getOrSet("user", () => "Ada");
+    await cache.getOrSet("user", () => "Grace");
+    cache.invalidateTag("unused");
+
+    expect(events).toEqual([
+      { operation: "get", key: "missing", hit: false },
+      { operation: "getOrSet", key: "user", hit: false, coalesced: false },
+      { operation: "set", key: "user" },
+      { operation: "getOrSet", key: "user", hit: true, coalesced: false },
+      { operation: "invalidateTag", tag: "unused", removed: 0 },
+    ]);
+  });
+
+  test("supports TTL expiration and bounded entries", () => {
+    let now = 1_000;
+    const cache = new MemoryCache({ now: () => now, maxEntries: 1 });
+
+    cache.set("first", { value: 1 }, { ttlMs: 100 });
+    expect(cache.get<{ value: number }>("first")).toEqual({ value: 1 });
+    now = 1_101;
+    expect(cache.get("first")).toBeUndefined();
+
+    cache.set("first", 1);
+    cache.set("second", 2);
+    expect(cache.get<number>("first")).toBeUndefined();
+    expect(cache.get<number>("second")).toBe(2);
+  });
+
+  test("invalidates entries by tag and keeps namespaces isolated", () => {
+    const cache = new MemoryCache();
+    const users = cache.namespace("users");
+
+    cache.set("list", ["user-1"], { tags: ["users"] });
+    users.set("list", ["user-2"], { tags: ["users"] });
+
+    expect(cache.invalidateTag("users")).toBe(1);
+    expect(cache.get("list")).toBeUndefined();
+    expect(users.get<string[]>("list")).toEqual(["user-2"]);
+    expect(users.invalidateTag("users")).toBe(1);
+    expect(users.get<string[]>("list")).toBeUndefined();
+  });
+
+  test("coalesces concurrent getOrSet loaders", async () => {
+    const cache = new MemoryCache();
+    let loads = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const loader = async () => {
+      loads += 1;
+      await gate;
+      return { value: "loaded" };
+    };
+
+    const first = cache.getOrSet("config", loader);
+    const second = cache.getOrSet("config", loader);
+    release();
+
+    expect(await Promise.all([first, second])).toEqual([
+      { value: "loaded" },
+      { value: "loaded" },
+    ]);
+    expect(loads).toBe(1);
+    expect(await cache.getOrSet("config", loader)).toEqual({ value: "loaded" });
+    expect(loads).toBe(1);
+  });
+
+  test("retains undefined as a cached value", async () => {
+    const cache = new MemoryCache();
+    let loads = 0;
+
+    const first = await cache.getOrSet("missing", async () => {
+      loads += 1;
+      return undefined;
+    });
+    const second = await cache.getOrSet("missing", async () => {
+      loads += 1;
+      return "unexpected";
+    });
+
+    expect(first).toBeUndefined();
+    expect(second).toBeUndefined();
+    expect(loads).toBe(1);
+  });
+
+  test("keeps namespace and key components collision-safe", () => {
+    const cache = new MemoryCache();
+    const first = cache.namespace("a:b");
+    const second = cache.namespace("a");
+
+    first.set("c", "first");
+    second.set("b:c", "second");
+
+    expect(first.get<string>("c")).toBe("first");
+    expect(second.get<string>("b:c")).toBe("second");
+  });
+});

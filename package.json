@@ -22,21 +22,32 @@
     "typescript"
   ],
   "exports": {
-    ".": "./src/kernel/index.ts"
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
   },
   "bin": {
-    "starpod": "src/cli/starpod.ts"
+    "starpod": "dist/cli/starpod.js"
   },
   "files": [
-    "src/kernel",
-    "src/cli",
+    "dist",
     "template",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "postinstall": "bun src/cli/postinstall.ts",
-    "seal": "bun src/cli/starpod.ts seal"
+    "build": "bun run build:types && bun build src/kernel/index.ts --outfile dist/index.js --target bun --format esm --external elysia && bun build src/cli/starpod.ts --outfile dist/cli/starpod.js --target bun --format esm --external elysia",
+    "build:types": "bunx tsc -p tsconfig.build.json",
+    "typecheck": "bunx tsc --noEmit",
+    "test": "bun test",
+    "check": "bun run typecheck && bun test",
+    "seal": "bun run check",
+    "prepack": "bun run build"
+  },
+  "engines": {
+    "bun": ">=1.4.0"
   },
   "dependencies": {
     "elysia": "^1.4.0"

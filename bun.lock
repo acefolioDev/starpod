@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "elysia-atlas",
+      "name": "starpod",
       "dependencies": {
         "elysia": "^1.4.0",
       },

@@ -15,5 +15,5 @@
     "resolveJsonModule": true,
     "isolatedModules": true
   },
-  "include": ["src/kernel", "src/cli"]
+  "include": ["src/kernel", "src/cli", "test"]
 }

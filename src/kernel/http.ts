@@ -1,0 +1,28 @@
+import type Elysia from "elysia";
+import type { InjectionToken } from "./di";
+
+export const REQUEST_ID_HEADER = "x-request-id";
+
+export type RequestResolver = <T>(token: InjectionToken<T>) => T;
+export type AsyncRequestResolver = <T>(token: InjectionToken<T>) => Promise<T>;
+
+export type StarpodSingleton = {
+  readonly decorator: {};
+  readonly store: {};
+  readonly derive: {
+    readonly requestId: string;
+    readonly resolve: RequestResolver;
+    readonly resolveAsync: AsyncRequestResolver;
+  };
+  readonly resolve: {};
+};
+
+/** Native Elysia with Starpod's typed request context. */
+export type StarpodElysia = Elysia<string, StarpodSingleton>;
+
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+
+export function requestIdFrom(headers: Headers): string {
+  const supplied = headers.get(REQUEST_ID_HEADER);
+  return supplied && REQUEST_ID_PATTERN.test(supplied) ? supplied : crypto.randomUUID();
+}
