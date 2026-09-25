@@ -25,6 +25,9 @@ export class StarpodError extends Error {
   readonly exposeDetails: boolean;
 
   constructor(options: StarpodErrorOptions) {
+    validateStatus(options.status);
+    validateCode(options.code);
+    validateMessage(options.message);
     super(options.message, { cause: options.cause });
     this.name = "StarpodError";
     this.status = options.status;
@@ -88,6 +91,7 @@ export type ErrorSerializationOptions = {
 
 const MAX_DETAIL_DEPTH = 6;
 const MAX_DETAIL_ENTRIES = 100;
+const MAX_ERROR_MESSAGE_LENGTH = 2_048;
 const REDACTED = "[REDACTED]";
 const UNAVAILABLE = "[UNAVAILABLE]";
 const TRUNCATED = "[TRUNCATED]";
@@ -158,10 +162,18 @@ function sanitizeValue(
   if (depth >= MAX_DETAIL_DEPTH) return TRUNCATED;
   if (seen.has(value)) return CIRCULAR;
 
-  seen.add(value);
+    seen.add(value);
   try {
     if (Array.isArray(value)) {
-      return value.map((item) => sanitizeValue(item, depth + 1, seen, state));
+      const output: unknown[] = [];
+      for (const item of value) {
+        if (state.entries++ >= MAX_DETAIL_ENTRIES) {
+          output.push(TRUNCATED);
+          break;
+        }
+        output.push(sanitizeValue(item, depth + 1, seen, state));
+      }
+      return output;
     }
 
     if (value instanceof Date) {
@@ -196,4 +208,22 @@ function isNativeHttpError(error: unknown): error is NativeHttpError {
     candidate.status < 600 &&
     candidate.code in NATIVE_ERROR_CODES
   );
+}
+
+function validateStatus(status: number) {
+  if (!Number.isInteger(status) || status < 400 || status > 599) {
+    throw new Error("StarpodError status must be an HTTP error status from 400 through 599");
+  }
+}
+
+function validateCode(code: string) {
+  if (!code || code.length > 128 || /[\r\n]/.test(code)) {
+    throw new Error("StarpodError code must be a non-empty single-line string of at most 128 characters");
+  }
+}
+
+function validateMessage(message: string) {
+  if (!message || message.length > MAX_ERROR_MESSAGE_LENGTH) {
+    throw new Error("StarpodError message must be non-empty and at most 2048 characters");
+  }
 }

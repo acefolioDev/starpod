@@ -50,10 +50,19 @@ function setup() {
 describe("EventOutbox", () => {
   test("appends encoded events with the caller transaction", async () => {
     const { outbox, store } = setup();
-    const record = await outbox.enqueue("user.created", { id: "user-1" }, { transaction: "tx-1" });
+    const record = await outbox.enqueue("user.created", { id: "user-1" }, {
+      transaction: "tx-1",
+      tenantId: "tenant-1",
+    });
 
     expect(record).toMatchObject({ id: "outbox-1", createdAt: 1000, attempts: 0 });
-    expect(record.envelope).toEqual({ id: "outbox-1", name: "user.created", version: "1", payload: { id: "user-1" } });
+    expect(record.envelope).toEqual({
+      id: "outbox-1",
+      name: "user.created",
+      version: "1",
+      tenantId: "tenant-1",
+      payload: { id: "user-1" },
+    });
     expect(store.transactions).toEqual(["tx-1"]);
   });
 

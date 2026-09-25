@@ -1,4 +1,5 @@
 import { assertJsonValue, type JsonValue } from "../serialization/wire";
+import { validateTenantId } from "../security/tenant-id";
 import type { JobProgress } from "./progress";
 
 export type JobContext = {
@@ -6,6 +7,7 @@ export type JobContext = {
   readonly name: string;
   readonly attempt: number;
   readonly signal: AbortSignal;
+  readonly tenantId?: string;
   readonly reportProgress: (progress: JobProgress) => void;
 };
 
@@ -18,6 +20,7 @@ export type JobCodec<TPayload> = {
 
 export type JobWireOptions = {
   readonly id?: string;
+  readonly tenantId?: string;
   readonly delayMs?: number;
   readonly priority?: number;
   readonly maxAttempts?: number;
@@ -40,6 +43,7 @@ export type JobDefinition<TPayload> = {
 
 export type JobOptions = {
   readonly id?: string;
+  readonly tenantId?: string;
   readonly delayMs?: number;
   readonly priority?: number;
   readonly maxAttempts?: number;
@@ -67,6 +71,7 @@ export type JobObserver = (event: JobEvent) => void;
 export type DeadLetter = {
   readonly id: string;
   readonly name: string;
+  readonly tenantId?: string;
   readonly payload: unknown;
   readonly attempts: number;
   readonly error: unknown;
@@ -199,6 +204,7 @@ export function validateJob<TPayload>(job: JobDefinition<TPayload>, options: Job
     throw new Error(`job name must start with a lowercase letter: ${job.name}`);
   }
   if (options.id !== undefined) validateJobId(options.id);
+  if (options.tenantId !== undefined) validateTenantId(options.tenantId);
   if (options.delayMs !== undefined && (!Number.isFinite(options.delayMs) || options.delayMs < 0)) {
     throw new Error("job delayMs must be a finite non-negative number");
   }
@@ -222,9 +228,17 @@ export function validateJobId(id: string) {
   }
 }
 
+export function jobDeduplicationKey(name: string, tenantId: string | undefined, key: string) {
+  validateJobName(name);
+  validateTenantId(tenantId ?? "anonymous", "job tenant id");
+  validateJobId(key);
+  return [name, tenantId ?? "anonymous", key].map(encodeURIComponent).join(":");
+}
+
 function toWireOptions(options: JobOptions): JobWireOptions {
   return {
     ...(options.id === undefined ? {} : { id: options.id }),
+    ...(options.tenantId === undefined ? {} : { tenantId: options.tenantId }),
     ...(options.delayMs === undefined ? {} : { delayMs: options.delayMs }),
     ...(options.priority === undefined ? {} : { priority: options.priority }),
     ...(options.maxAttempts === undefined ? {} : { maxAttempts: options.maxAttempts }),

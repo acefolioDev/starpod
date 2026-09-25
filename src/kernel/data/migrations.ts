@@ -97,6 +97,7 @@ export class MigrationRunner<TContext> {
   private async readApplied() {
     const applied = [...await this.store.applied()];
     const known = new Set<string>();
+    let firstIndex = -1;
     let previousIndex = -1;
     for (const id of applied) {
       validateMigrationId(id);
@@ -106,9 +107,14 @@ export class MigrationRunner<TContext> {
       if (migrationIndex < previousIndex) {
         throw new Error(`Applied migrations are out of order: ${id}`);
       }
+      if (previousIndex >= 0 && migrationIndex !== previousIndex + 1) {
+        throw new Error(`Applied migrations have a gap before: ${id}`);
+      }
+      if (firstIndex === -1) firstIndex = migrationIndex;
       known.add(id);
       previousIndex = migrationIndex;
     }
+    if (firstIndex > 0) throw new Error(`Applied migrations have a gap before: ${applied[0]}`);
     return applied;
   }
 }

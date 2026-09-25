@@ -1,9 +1,71 @@
 import { describe, expect, test } from "bun:test";
-import { bootstrap } from "../src/kernel/application/bootstrap";
+import { bootstrap, disposeBootstrap } from "../src/kernel/application/bootstrap";
 import { application, pod } from "../src/kernel/application/feature";
 import type { StarpodElysia } from "../src/kernel/http/http";
 
 describe("native request DI", () => {
+  test("keeps root-mounted routes inside their feature scope", async () => {
+    class RootRequestContext {
+      static readonly lifetime = "request" as const;
+      readonly value = "feature-scope";
+    }
+
+    class Controller {
+      routes(app: StarpodElysia) {
+        return app.get("/nested", ({ resolve }) => resolve(RootRequestContext).value);
+      }
+    }
+
+    const server = await bootstrap(
+      application({
+        features: [pod({
+          name: "root",
+          prefix: "/",
+          controller: Controller,
+          providers: [RootRequestContext],
+        })],
+      }),
+      { printFeatures: false, seal: false },
+    );
+
+    const response = await server.handle(new Request("http://localhost/nested"));
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("feature-scope");
+    await disposeBootstrap(server);
+  });
+
+  test("keeps dynamic feature prefixes inside their feature scope", async () => {
+    class DynamicRequestContext {
+      static readonly lifetime = "request" as const;
+      readonly value = "dynamic-feature-scope";
+    }
+
+    class Controller {
+      routes(app: StarpodElysia) {
+        return app.get("/", ({ resolve }) => resolve(DynamicRequestContext).value);
+      }
+    }
+
+    const server = await bootstrap(
+      application({
+        features: [pod({
+          name: "users",
+          prefix: "/users/:userId",
+          controller: Controller,
+          providers: [DynamicRequestContext],
+        })],
+      }),
+      { printFeatures: false, seal: false },
+    );
+
+    const response = await server.handle(new Request("http://localhost/users/user-1/"));
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("dynamic-feature-scope");
+    await disposeBootstrap(server);
+  });
+
   test("resolves request providers through native Elysia context and disposes them", async () => {
     const disposed: string[] = [];
     const created: string[] = [];

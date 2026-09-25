@@ -35,6 +35,10 @@ export function cors(options: CorsOptions) {
     }
 
     if (request.method !== "OPTIONS") return;
+    set.headers["vary"] = appendVary(
+      appendVary(set.headers["vary"], "Access-Control-Request-Method"),
+      "Access-Control-Request-Headers",
+    );
 
     const requestedMethod = request.headers.get("access-control-request-method");
     const requestedHeaders = request.headers.get("access-control-request-headers");

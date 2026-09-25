@@ -16,6 +16,9 @@ export function healthRoutes(app: AnyElysia, options: HealthRoutesOptions = {}) 
   const livenessPath = options.livenessPath ?? "/health/live";
   const readinessPath = options.readinessPath ?? "/health/ready";
   const checks = options.checks ?? [];
+  validatePath(livenessPath, "livenessPath");
+  validatePath(readinessPath, "readinessPath");
+  if (livenessPath === readinessPath) throw new Error("Health livenessPath and readinessPath must be different");
   const names = new Set<string>();
   let stopping = false;
 
@@ -87,5 +90,11 @@ async function runCheck(check: HealthCheck) {
   } finally {
     if (timer) clearTimeout(timer);
     controller.abort();
+  }
+}
+
+function validatePath(path: string, label: string) {
+  if (!path.startsWith("/") || path.startsWith("//") || /[?#\r\n]/.test(path)) {
+    throw new Error(`Health ${label} must be an absolute path without a query, fragment, or control characters`);
   }
 }

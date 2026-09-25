@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Elysia } from "elysia";
 import { MemoryCache } from "../src/kernel/data/cache";
-import { requireTenant, tenancy, tenantCache, tenantKey, type TenantElysia } from "../src/kernel/security/tenant";
+import { requireTenant, tenancy, tenantCache, tenantKey, validateTenantId, type TenantElysia } from "../src/kernel/security/tenant";
 
 describe("tenant context", () => {
   test("resolves a tenant through native Elysia context", async () => {
@@ -33,6 +33,7 @@ describe("tenant context", () => {
     expect(response.status).toBe(403);
     expect(() => tenantKey("tenant-1", "bad\nkey")).toThrow("Invalid tenant key");
     expect(() => requireTenant(null)).toThrow("A tenant is required");
+    expect(() => validateTenantId("x".repeat(257))).toThrow("at most 256 characters");
   });
 
   test("keeps tenant and key components collision-safe", () => {

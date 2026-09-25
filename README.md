@@ -79,6 +79,39 @@ export class HelloController {
 
 Use `import { Elysia, t } from "elysia"` anywhere in your application. Starpod does not restrict Elysia imports or wrap its route API. `StarpodElysia` is optional and only adds typed Starpod request context such as `requestId`.
 
+## Native HTTP capabilities
+
+Starpod keeps advanced HTTP behavior in Elysia instead of creating parallel wrappers. Controllers can use Elysia's native APIs for multipart uploads, cookies, redirects, streaming, Server-Sent Events, WebSockets, and any Elysia plugin:
+
+```ts
+routes(app: StarpodElysia) {
+  return app
+    .post("/upload", async ({ request }) => {
+      const form = await request.formData();
+      return { filename: String(form.get("file")) };
+    })
+    .get("/stream", () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue("data: ready\\n\\n");
+        controller.close();
+      },
+    }), { headers: { "content-type": "text/event-stream" } }))
+    .get("/redirect", () => Response.redirect("/users", 302));
+}
+```
+
+Use `app.ws(...)` for WebSockets and native Elysia response types for downloads or SSE. Starpod's request identity, DI, errors, observability, and shutdown boundaries remain available around those routes.
+
+For endpoints that serve more than one representation, use the small content-negotiation helper and keep the response itself native:
+
+```ts
+import { negotiateContentType } from "starpod";
+
+const type = negotiateContentType(request, ["application/json", "text/csv"]);
+if (!type) return new Response(null, { status: 406 });
+return new Response(renderReport(), { headers: { "content-type": type } });
+```
+
 ## Dependency injection
 
 DI is constructor injection with an explicit provider graph. No service locator, decorators, global singletons, or hidden reflection:
@@ -149,7 +182,9 @@ class Controller {
 }
 ```
 
-Inside a native controller route, `resolve(Token)` uses the request's real child container. Use `resolveAsync(Token)` when a request-scoped provider exposes asynchronous `initialize()` work; initialization follows dependency order and is retried after a failed attempt. Request-scoped instances are disposed after ordinary handlers complete and remain alive until native streams or iterators finish, while singleton instances remain owned by their application or feature container. Tests can override application or feature providers with a real child scope at bootstrap:
+Starpod rejects singleton providers that depend on request-scoped providers, preventing request state from being captured and reused across requests.
+
+Inside a native controller route, `resolve(Token)` uses the request's real child container. Use `resolveAsync(Token)` when a request-scoped provider exposes asynchronous `initialize()` work; initialization follows dependency order and is retried after a failed attempt. Request-scoped instances and lifecycle-aware transient instances are disposed by their owning scope; request resources remain alive until native streams or iterators finish, while singleton instances remain owned by their application or feature container. Tests can override application or feature providers with a real child scope at bootstrap:
 
 ```ts
 const server = await bootstrap(app, {
@@ -255,6 +290,7 @@ Bootstrap serializes these into a consistent response shape and hides unexpected
 ```
 
 Details are sanitized at the HTTP boundary as well: common secret-shaped fields such as passwords, tokens, authorization headers, cookies, SQL, queries, stacks, and causes are replaced with `[REDACTED]`. Cyclic or non-JSON values are converted to safe markers, so validation diagnostics cannot accidentally break response serialization.
+Exposed detail objects and arrays are bounded to keep malformed validation input from creating oversized error responses.
 
 Every request receives a validated `x-request-id` (or a generated one). It is returned on the response and is available to native Elysia handlers as `requestId` through Elysia's derived context. `x-correlation-id` is propagated independently for tracing a related group of requests; when it is absent, it falls back to the request ID and is available as `correlationId`.
 
@@ -576,12 +612,16 @@ Distributed adapters still own delivery guarantees such as retries, ordering, co
 
 `EventDispatcher` is the durable-transport bridge: it encodes through the registry and publishes an envelope, while the broker owns delivery, retries, consumer groups, and dead letters.
 
+Events may carry an explicit `tenantId` through dispatch, outbox, and consumer delivery. Handlers receive it in the optional event context; Starpod does not install ambient tenant state, so consumers still choose the database and authorization boundary deliberately.
+
 For broker consumers, register the same codecs and handlers with `EventConsumer`. It validates the envelope version, decodes the payload, and delegates delivery to the normal typed `EventBus`; the broker remains responsible for acknowledgement, retry, ordering, and dead-letter policy. When an envelope has an ID, pass an atomic `EventIdempotencyStore` to make duplicate delivery safe:
 
 ```ts
 const consumer = new EventConsumer(registry, bus, { idempotency: deduplicationStore });
 await consumer.consume(envelopeFromBroker);
 ```
+
+For local development and tests, `MemoryEventIdempotencyStore` coalesces concurrent deliveries, remembers successful IDs for a bounded TTL, and leaves failed work eligible for retry. Tenant-scoped event IDs are isolated automatically when the envelope carries `tenantId`. It is process-local; use a shared atomic store when consumers run on multiple instances.
 
 For a transactional outbox, use `EventOutbox.enqueue(...)` inside the same database transaction as the domain write. Its `EventOutboxStore` must make `append` transactional and `claim` atomic; `publishPending()` publishes claimed records and marks broker failures for a later retry. If marking a successfully published record fails, the record may be delivered again, so consumers must be idempotent:
 
@@ -612,7 +652,7 @@ await jobs.dispatch(sendWelcomeEmail, { userId: user.id }, {
 });
 ```
 
-The in-memory runner supports delays, priorities, retries, cooperative timeouts, cancellation through AbortSignal, concurrency, deduplication, and dead letters. It is intended for local development and tests; it does not survive process restarts or provide distributed delivery.
+The in-memory runner supports delays, priorities, retries, cooperative timeouts, cancellation through AbortSignal, concurrency, deduplication, and dead letters. When `tenantId` is supplied, deduplication is scoped to that tenant. It is intended for local development and tests; it does not survive process restarts or provide distributed delivery.
 
 Queues may expose cancel(id) for cooperative cancellation. A running handler must honor its JobContext signal; cancellation is treated as a control decision rather than a failed delivery. Long-running handlers can call `context.reportProgress({ completed, total })`; observers receive only bounded progress metadata, never the job payload.
 
@@ -643,6 +683,18 @@ await worker.run({
 
 The broker adapter maps its delivery ID and attempt count into `JobWorker`; Starpod does not acknowledge or retry messages behind the adapter's back. Use a `codec` whenever payloads cross a process or persistence boundary. This keeps local jobs simple while making serialization, worker registration, and failure semantics explicit for production adapters.
 
+Broker redeliveries can be made idempotent with an application-owned atomic store:
+
+```ts
+import { JobRegistry, JobWorker, MemoryJobIdempotencyStore } from "starpod";
+
+const worker = new JobWorker(new JobRegistry(), {
+  idempotency: new MemoryJobIdempotencyStore(),
+});
+```
+
+`JobWorker` scopes the delivery key by job name and `tenantId`, coalesces concurrent duplicates, and only remembers successful work. Failed or timed-out work remains eligible for broker retry. The memory store is process-local; use a shared atomic implementation when workers run on multiple instances.
+
 `InMemoryJobQueue` exposes `dispose()`, so registering it as an application singleton lets Starpod drain it during normal shutdown.
 
 For a durable broker, use `DurableJobDispatcher`. It requires a job codec and publishes only a transport-safe envelope; the worker registers the same job with `JobRegistry` and never receives a serialized handler closure:
@@ -656,10 +708,13 @@ const dispatcher = new DurableJobDispatcher({
 
 await dispatcher.dispatch(sendWelcomeEmail, { userId: user.id }, {
   maxAttempts: 3,
+  tenantId: tenant.id,
 });
 ```
 
 The dispatcher also accepts `onEvent` for value-free dispatch telemetry. The broker adapter remains responsible for durability, visibility timeouts, acknowledgement, retries, consumer groups, and dead-letter storage.
+
+Pass `tenantId` when dispatching tenant-owned work. It is validated, persisted in durable job options, and exposed as `context.tenantId` to both in-memory handlers and `JobWorker` deliveries. This is explicit metadata, not an automatic authorization decision; handlers must still enforce tenant access at their storage boundary.
 
 For local work and tests, `InMemoryScheduler` dispatches typed jobs on a fixed-delay interval through a `JobQueue`:
 
@@ -713,7 +768,7 @@ const value = await withLock(redisLocks, `user:${userId}`, () => rebuildUser(use
 });
 ```
 
-`MemoryLockStore` is bounded and process-local. A distributed implementation must make `acquire` atomic and keep lease ownership safe; Starpod does not claim that an in-memory lock coordinates multiple instances.
+`MemoryLockStore` is bounded and process-local; when full, it rejects a new acquisition instead of evicting an active lease. A distributed implementation must make `acquire` atomic and keep lease ownership safe; Starpod does not claim that an in-memory lock coordinates multiple instances.
 
 ## Observability
 
@@ -839,7 +894,7 @@ Matching `If-None-Match` requests receive `304 Not Modified`. Streaming response
 
 ## Rate limiting
 
-Rate limiting is an explicit native Elysia hook. The built-in store is bounded and process-local; use a shared atomic store for horizontally scaled deployments:
+Rate limiting is an explicit native Elysia hook. The built-in store is bounded and process-local; when full, it rejects new identities until a window expires instead of evicting active limits. Use a shared atomic store for horizontally scaled deployments:
 
 ```ts
 import { rateLimit } from "starpod";
@@ -871,7 +926,7 @@ const loginGuard = new BruteForceGuard({
 const user = await loginGuard.run(`${email}:${ipAddress}`, () => authenticate(email, password));
 ```
 
-The built-in store is bounded and process-local. Use an atomic shared `BruteForceStore` for multiple instances, and choose a privacy-preserving identity key appropriate to the endpoint. The guard does not replace account lockout policy, CAPTCHA, or identity-provider controls.
+The built-in store is bounded and process-local. When full, it preserves active lockouts and temporarily fails closed for new identities instead of evicting protection. A custom `BruteForceStore` must implement `recordFailure` atomically; use a shared implementation for multiple instances, and choose a privacy-preserving identity key appropriate to the endpoint. The guard does not replace account lockout policy, CAPTCHA, or identity-provider controls.
 
 For downloads or other temporary capabilities, sign an absolute URL with an application secret:
 
@@ -886,6 +941,18 @@ if (!(await verifySignedUrl(request.url, config.urlSecret))) throw Unauthorized(
 ```
 
 The helper signs the complete canonical URL with HMAC-SHA-256, requires a 32-byte secret, rejects URL credentials and duplicate signature parameters, and treats the expiry as exclusive. It does not grant authorization by itself; the application must still check ownership and access policy.
+
+For user-controlled redirect targets, use `safeRedirect`. Relative application paths are allowed by default; absolute destinations require an explicit origin allowlist:
+
+```ts
+import { safeRedirect } from "starpod";
+
+return safeRedirect(returnTo, {
+  allowedOrigins: ["https://app.example.com"],
+});
+```
+
+Protocol-relative URLs, URL credentials, unsupported schemes, and control characters are rejected.
 
 ## CLI diagnostics
 
@@ -936,7 +1003,6 @@ For a project-level architecture report, use the CLI audit command. It exits non
 ```bash
 bunx starpod audit
 bunx starpod audit --json
-```
 ```
 
 ## Production boundary

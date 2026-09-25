@@ -8,7 +8,12 @@ export type BruteForceState = {
 
 export type BruteForceStore = {
   get(key: string): BruteForceState | undefined | Promise<BruteForceState | undefined>;
-  set(key: string, state: BruteForceState): void | Promise<void>;
+  /** Atomically increment a failure and return the resulting state. */
+  recordFailure(
+    key: string,
+    now: number,
+    options: { readonly maxFailures: number; readonly windowMs: number; readonly lockoutMs: number },
+  ): BruteForceState | Promise<BruteForceState>;
   delete(key: string): void | Promise<void>;
 };
 
@@ -31,6 +36,7 @@ export class MemoryBruteForceStore implements BruteForceStore {
   private readonly states = new Map<string, BruteForceState>();
   private readonly maxKeys: number;
   private readonly now: () => number;
+  private saturated: BruteForceState | undefined;
 
   constructor(options: { readonly maxKeys?: number; readonly now?: () => number } = {}) {
     this.maxKeys = options.maxKeys ?? 10_000;
@@ -41,23 +47,62 @@ export class MemoryBruteForceStore implements BruteForceStore {
   }
 
   get(key: string) {
-    const state = this.states.get(key);
-    if (!state || Math.max(state.expiresAt, state.blockedUntil) <= this.now()) {
-      this.states.delete(key);
-      return undefined;
+    const now = this.now();
+    this.purge(now);
+    return this.states.get(key) ?? this.saturated;
+  }
+
+  recordFailure(key: string, now: number, options: {
+    readonly maxFailures: number;
+    readonly windowMs: number;
+    readonly lockoutMs: number;
+  }) {
+    validateKey(key);
+    this.purge(now);
+    const active = this.states.get(key);
+    if (active?.blockedUntil && active.blockedUntil > now) return active;
+    if (!active && this.saturated) return this.saturated;
+
+    const failures = (active?.failures ?? 0) + 1;
+    const state = Object.freeze({
+      failures,
+      expiresAt: active?.expiresAt ?? now + options.windowMs,
+      blockedUntil: failures >= options.maxFailures ? now + options.lockoutMs : 0,
+    });
+    if (!active && this.states.size >= this.maxKeys) {
+      this.saturated = Object.freeze({
+        failures: options.maxFailures,
+        expiresAt: this.nextCapacityAt(now, options.windowMs),
+        blockedUntil: this.nextCapacityAt(now, options.lockoutMs),
+      });
+      return this.saturated;
     }
+    this.states.set(key, state);
     return state;
   }
 
   set(key: string, state: BruteForceState) {
-    if (!this.states.has(key) && this.states.size >= this.maxKeys) {
-      this.states.delete(this.states.keys().next().value!);
-    }
+    if (!this.states.has(key) && this.states.size >= this.maxKeys) return;
     this.states.set(key, state);
   }
 
   delete(key: string) {
     this.states.delete(key);
+  }
+
+  private purge(now: number) {
+    for (const [key, state] of this.states) {
+      if (Math.max(state.expiresAt, state.blockedUntil) <= now) this.states.delete(key);
+    }
+    if (this.saturated && this.saturated.blockedUntil <= now) this.saturated = undefined;
+  }
+
+  private nextCapacityAt(now: number, fallbackMs: number) {
+    let next = now + fallbackMs;
+    for (const state of this.states.values()) {
+      next = Math.min(next, Math.max(state.expiresAt, state.blockedUntil));
+    }
+    return next;
   }
 }
 
@@ -89,16 +134,8 @@ export class BruteForceGuard {
   async recordFailure(key: string): Promise<BruteForceDecision> {
     validateKey(key);
     const now = this.now();
-    const current = await this.activeState(key);
-    if (current?.blockedUntil && current.blockedUntil > now) {
-      return decision(false, current.failures, current.blockedUntil - now);
-    }
-
-    const failures = (current?.failures ?? 0) + 1;
-    const expiresAt = current?.expiresAt ?? now + this.options.windowMs;
-    const blockedUntil = failures >= this.options.maxFailures ? now + this.options.lockoutMs : 0;
-    await this.store.set(key, Object.freeze({ failures, expiresAt, blockedUntil }));
-    return decision(blockedUntil === 0, failures, Math.max(0, blockedUntil - now));
+    const state = await this.store.recordFailure(key, now, this.options);
+    return decision(state.blockedUntil <= now, state.failures, Math.max(0, state.blockedUntil - now));
   }
 
   async recordSuccess(key: string) {

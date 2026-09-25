@@ -3,6 +3,8 @@ import type Elysia from "elysia";
 import { BadRequest, Forbidden } from "../errors/errors";
 import type { StarpodSingleton } from "../http/http";
 import type { CacheSetOptions, CacheStore } from "../data/cache";
+import { validateTenantId } from "./tenant-id";
+export { validateTenantId } from "./tenant-id";
 
 export type Tenant = {
   readonly id: string;
@@ -49,7 +51,7 @@ export function requireTenant<TTenant extends Tenant>(tenant: TTenant | null | u
 
 /** Build an explicit tenant-prefixed key for caches, locks, and other stores. */
 export function tenantKey(tenantId: string, key: string): string {
-  validatePart(tenantId, "tenant id");
+  validateTenantId(tenantId);
   validatePart(key, "tenant key");
   return `${encodeURIComponent(tenantId)}:${encodeURIComponent(key)}`;
 }
@@ -70,7 +72,7 @@ export function tenantCache(cache: CacheStore, tenant: Tenant): CacheStore {
 }
 
 function assertTenant<TTenant extends Tenant>(tenant: TTenant) {
-  validatePart(tenant.id, "tenant id");
+  validateTenantId(tenant.id);
 }
 
 function validatePart(value: string, label: string) {

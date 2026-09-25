@@ -18,10 +18,17 @@ describe("InMemoryJobQueue", () => {
       {
         name: "send-welcome-email",
         handle: (payload: { readonly userId: string }, context) => {
-          seen.push({ payload, id: context.id, attempt: context.attempt, name: context.name });
+          seen.push({
+            payload,
+            id: context.id,
+            attempt: context.attempt,
+            name: context.name,
+            tenantId: context.tenantId,
+          });
         },
       },
       { userId: "user-1" },
+      { tenantId: "tenant-1" },
     );
     await queue.awaitIdle();
 
@@ -32,6 +39,7 @@ describe("InMemoryJobQueue", () => {
         id: "job-1",
         attempt: 1,
         name: "send-welcome-email",
+        tenantId: "tenant-1",
       },
     ]);
     await queue.close();
@@ -132,6 +140,7 @@ describe("InMemoryJobQueue", () => {
     expect(calls).toBe(2);
     await queue.close();
   });
+
 
   test("rejects duplicate explicit ids while preserving queue state", async () => {
     const queue = new InMemoryJobQueue({ idFactory: () => "generated" });
@@ -236,4 +245,3 @@ describe("InMemoryJobQueue", () => {
     );
   });
 });
-

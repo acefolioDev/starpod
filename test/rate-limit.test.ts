@@ -18,6 +18,18 @@ describe("rate limiting", () => {
     expect(store.consume("client", 2, 100)).toMatchObject({ allowed: true, remaining: 1, resetAt: 1_201 });
   });
 
+  test("does not evict an active bucket when capacity is full", () => {
+    let now = 1_000;
+    const store = new MemoryRateLimitStore({ now: () => now, maxKeys: 1 });
+
+    expect(store.consume("client", 1, 100)).toMatchObject({ allowed: true, remaining: 0 });
+    expect(store.consume("attacker", 1, 100)).toMatchObject({ allowed: false, remaining: 0 });
+    expect(store.consume("client", 1, 100)).toMatchObject({ allowed: false, remaining: 0 });
+
+    now = 1_101;
+    expect(store.consume("attacker", 1, 100)).toMatchObject({ allowed: true, remaining: 0 });
+  });
+
   test("integrates with bootstrap as a native Elysia hook", async () => {
     class Controller {
       routes(app: StarpodElysia) {

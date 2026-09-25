@@ -1,8 +1,16 @@
 import { assertJsonValue, type JsonValue } from "../serialization/wire";
-
+import { validateTenantId } from "../security/tenant-id";
+import { eventIdempotencyKey } from "./idempotency";
 export type EventMap = Record<string, unknown>;
 
-export type EventHandler<TPayload> = (payload: TPayload) => void | Promise<void>;
+export type EventContext = {
+  readonly id?: string;
+  readonly name: string;
+  readonly version?: string;
+  readonly tenantId?: string;
+};
+
+export type EventHandler<TPayload> = (payload: TPayload, context?: EventContext) => void | Promise<void>;
 
 export type EventBusEvent =
   | { readonly operation: "emit"; readonly name: string; readonly handlers: number }
@@ -26,6 +34,7 @@ export type EventEnvelope = {
   readonly id?: string;
   readonly name: string;
   readonly version?: string;
+  readonly tenantId?: string;
   readonly payload: JsonValue;
 };
 
@@ -110,8 +119,17 @@ export class EventDispatcher<TEvents extends EventMap> {
     private readonly publisher: EventEnvelopePublisher,
   ) {}
 
-  async emit<TKey extends keyof TEvents & string>(name: TKey, payload: TEvents[TKey]) {
-    await this.publisher.publish(this.registry.encode(name, payload));
+  async emit<TKey extends keyof TEvents & string>(
+    name: TKey,
+    payload: TEvents[TKey],
+    options: { readonly tenantId?: string } = {},
+  ) {
+    if (options.tenantId !== undefined) validateTenantId(options.tenantId);
+    const envelope = this.registry.encode(name, payload);
+    await this.publisher.publish(Object.freeze({
+      ...envelope,
+      ...(options.tenantId === undefined ? {} : { tenantId: options.tenantId }),
+    }));
   }
 }
 
@@ -125,12 +143,24 @@ export class EventConsumer<TEvents extends EventMap> {
 
   async consume(envelope: EventEnvelope): Promise<void> {
     if (envelope.id !== undefined) validateEventId(envelope.id);
-    assertJsonValue(envelope.payload, "event payload");
+    if (envelope.tenantId !== undefined) validateTenantId(envelope.tenantId);
     const name = envelope.name as keyof TEvents & string;
-    const payload = this.registry.decode(name, envelope.payload, envelope.version);
-    const deliver = () => this.bus.emit(name, payload);
-    if (envelope.id !== undefined && this.options.idempotency) {
-      await this.options.idempotency.runOnce(envelope.id, deliver);
+    const context: EventContext = {
+      name,
+      ...(envelope.id === undefined ? {} : { id: envelope.id }),
+      ...(envelope.version === undefined ? {} : { version: envelope.version }),
+      ...(envelope.tenantId === undefined ? {} : { tenantId: envelope.tenantId }),
+    };
+    const deliver = () => {
+      assertJsonValue(envelope.payload, "event payload");
+      const payload = this.registry.decode(name, envelope.payload, envelope.version);
+      return this.bus.emit(name, payload, context);
+    };
+    const idempotencyKey = envelope.id === undefined
+      ? undefined
+      : eventIdempotencyKey(envelope.id, envelope.tenantId);
+    if (idempotencyKey !== undefined && this.options.idempotency) {
+      await this.options.idempotency.runOnce(idempotencyKey, deliver);
     } else {
       await deliver();
     }
@@ -180,14 +210,18 @@ export class EventBus<TEvents extends EventMap> {
     };
   }
 
-  async emit<TKey extends keyof TEvents & string>(name: TKey, payload: TEvents[TKey]) {
+  async emit<TKey extends keyof TEvents & string>(
+    name: TKey,
+    payload: TEvents[TKey],
+    context?: EventContext,
+  ) {
     const handlers = [...(this.handlers.get(name) ?? [])];
     const failures: unknown[] = [];
     this.observe({ operation: "emit", name, handlers: handlers.length });
 
     for (const [handlerIndex, handler] of handlers.entries()) {
       try {
-        await handler(payload);
+        await handler(payload, context);
         this.observe({ operation: "handler-success", name, handlerIndex });
       } catch (error) {
         failures.push(error);

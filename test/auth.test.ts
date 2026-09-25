@@ -38,6 +38,18 @@ describe("authentication", () => {
     expect(cookieValue(request, "missing")).toBeUndefined();
   });
 
+  test("fails closed for invalid API-key header names", () => {
+    const request = new Request("http://localhost", { headers: { "x-api-key": "secret" } });
+    expect(apiKeyFrom(request, { header: "bad header" })).toBeUndefined();
+  });
+
+  test("bounds bearer token extraction", () => {
+    const oversized = "a".repeat(4_097);
+    expect(bearerToken(new Request("http://localhost", {
+      headers: { authorization: `Bearer ${oversized}` },
+    }))).toBeUndefined();
+  });
+
   test("resolves an authenticated principal through native Elysia context", async () => {
     const app = authentication(async (request) =>
       bearerToken(request) === "valid" ? { id: "user-1" } : null,

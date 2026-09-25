@@ -62,11 +62,7 @@ export class MemoryCache implements CacheStore {
 
   set<T>(key: string, value: T, options: CacheSetOptions = {}) {
     validateKey(key);
-    if (options.ttlMs !== undefined && (!Number.isFinite(options.ttlMs) || options.ttlMs < 0)) {
-      throw new Error("cache ttlMs must be a finite non-negative number");
-    }
-    const tags = Object.freeze([...(options.tags ?? [])]);
-    for (const tag of tags) validateKey(tag, "cache tag");
+    const tags = validateSetOptions(options);
     this.removeEntry(key);
 
     while (this.entries.size >= this.maxEntries) {
@@ -104,6 +100,8 @@ export class MemoryCache implements CacheStore {
   }
 
   async getOrSet<T>(key: string, loader: () => T | Promise<T>, options: CacheSetOptions = {}) {
+    validateKey(key);
+    validateSetOptions(options);
     const cached = this.read<T>(key);
     if (cached.hit) {
       this.observe({ operation: "getOrSet", key, hit: true, coalesced: false });
@@ -139,7 +137,8 @@ export class MemoryCache implements CacheStore {
   clear() {
     this.entries.clear();
     this.tagKeys.clear();
-    this.inFlight.clear();
+    // Active loaders cannot be cancelled by CacheStore. Keep their promises
+    // coalesced; once they finish, their value may repopulate the cache.
     this.observe({ operation: "clear" });
   }
 
@@ -218,4 +217,13 @@ function validateKey(value: string, label = "cache key") {
   if (!value || value.includes("\n") || value.includes("\r")) {
     throw new Error(`${label} must be a non-empty single-line string`);
   }
+}
+
+function validateSetOptions(options: CacheSetOptions) {
+  if (options.ttlMs !== undefined && (!Number.isFinite(options.ttlMs) || options.ttlMs < 0)) {
+    throw new Error("cache ttlMs must be a finite non-negative number");
+  }
+  const tags = Object.freeze([...(options.tags ?? [])]);
+  for (const tag of tags) validateKey(tag, "cache tag");
+  return tags;
 }

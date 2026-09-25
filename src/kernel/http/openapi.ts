@@ -1,5 +1,4 @@
 import type { AnyElysia, DocumentDecoration } from "elysia";
-
 export type OpenApiSchema = Readonly<Record<string, unknown>>;
 
 export type OpenApiSecurityScheme =
@@ -59,7 +58,7 @@ export type OpenApiDocument = {
   readonly security?: readonly OpenApiSecurityRequirement[];
 };
 
-const DEFAULT_ERROR_STATUSES = [400, 401, 403, 404, 409, 413, 422, 429, 500] as const;
+const DEFAULT_ERROR_STATUSES = [400, 401, 403, 404, 406, 409, 413, 422, 429, 500] as const;
 const ERROR_SCHEMA: OpenApiSchema = Object.freeze({
   type: "object",
   properties: {
@@ -212,6 +211,7 @@ function errorDescription(status: number) {
     401: "Authentication required",
     403: "Forbidden",
     404: "Resource not found",
+    406: "Response representation not available",
     409: "Conflict",
     413: "Request body is too large",
     422: "Request validation failed",

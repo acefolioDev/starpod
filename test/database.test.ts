@@ -85,6 +85,33 @@ describe("DatabaseConnection", () => {
     expect(database.status).toBe("closed");
   });
 
+  test("drains active work before closing the client", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let started!: () => void;
+    const operationStarted = new Promise<void>((resolve) => { started = resolve; });
+    let closed = false;
+    const database = new DatabaseConnection({
+      connect: () => ({ id: "client" }),
+      close: () => { closed = true; },
+      transaction: async (_client, work) => {
+        started();
+        await gate;
+        return work({ id: "transaction" });
+      },
+    });
+
+    const transaction = database.transaction((value) => value.id);
+    await operationStarted;
+    const disposing = database.dispose();
+    await Promise.resolve();
+    expect(closed).toBe(false);
+    release();
+    expect(await transaction).toBe("transaction");
+    await disposing;
+    expect(closed).toBe(true);
+  });
+
   test("emits safe lifecycle events without affecting transactions", async () => {
     const events: string[] = [];
     let now = 0;

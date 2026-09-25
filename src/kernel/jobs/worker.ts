@@ -2,25 +2,28 @@ import {
   decodeJob,
   validateJobId,
   validateJobName,
-  type JobContext,
   type JobEvent,
   type JobObserver,
   type JobRegistry,
 } from "./contracts";
 import { assertJsonValue } from "../serialization/wire";
-import { emitJobProgress } from "./progress";
+import { validateTenantId } from "../security/tenant-id";
+import { createJobContext, observeJob } from "./context";
+import { jobIdempotencyKey, type JobIdempotencyStore } from "./idempotency";
 
 export type JobDelivery = {
   readonly id: string;
   readonly name: string;
   readonly payload: import("../serialization/wire").JsonValue;
   readonly attempt?: number;
+  readonly tenantId?: string;
   readonly timeoutMs?: number;
   readonly signal?: AbortSignal;
 };
 
 export type JobWorkerOptions = {
   readonly onEvent?: JobObserver;
+  readonly idempotency?: JobIdempotencyStore;
 };
 
 /** Execute serialized job deliveries without coupling Starpod to a broker. */
@@ -33,40 +36,36 @@ export class JobWorker {
   async run(delivery: JobDelivery): Promise<void> {
     validateDelivery(delivery);
     const job = this.registry.resolve(delivery.name);
-    assertJsonValue(delivery.payload, "job payload");
-    const payload = decodeJob(job, delivery.payload);
     const attempt = delivery.attempt ?? 1;
-    const controller = new AbortController();
-    const removeSignal = linkSignal(delivery.signal, controller);
-    const context: JobContext = {
-      id: delivery.id,
-      name: delivery.name,
-      attempt,
-      signal: controller.signal,
-      reportProgress: (progress) => emitJobProgress(
-        this.options.onEvent,
-        delivery.id,
-        delivery.name,
-        attempt,
-        progress,
-      ),
-    };
 
-    this.observe({ operation: "start", id: delivery.id, name: delivery.name, attempt });
-    try {
-      await runWithTimeout(job.handle(payload, context), controller, delivery.timeoutMs);
-      this.observe({ operation: "success", id: delivery.id, name: delivery.name, attempt });
-    } finally {
-      removeSignal();
-    }
+    const execute = async () => {
+      assertJsonValue(delivery.payload, "job payload");
+      const payload = decodeJob(job, delivery.payload);
+      const controller = new AbortController();
+      const removeSignal = linkSignal(delivery.signal, controller);
+      const context = createJobContext({
+        id: delivery.id,
+        name: delivery.name,
+        attempt,
+        signal: controller.signal,
+        tenantId: delivery.tenantId,
+        onEvent: this.options.onEvent,
+      });
+      this.observe({ operation: "start", id: delivery.id, name: delivery.name, attempt });
+      try {
+        await runWithTimeout(job.handle(payload, context), controller, delivery.timeoutMs);
+        this.observe({ operation: "success", id: delivery.id, name: delivery.name, attempt });
+      } finally {
+        removeSignal();
+      }
+    };
+    const key = jobIdempotencyKey(delivery.name, delivery.tenantId, delivery.id);
+    if (this.options.idempotency) await this.options.idempotency.runOnce(key, execute);
+    else await execute();
   }
 
   private observe(event: JobEvent) {
-    try {
-      this.options.onEvent?.(event);
-    } catch {
-      // Worker telemetry must not change delivery semantics.
-    }
+    observeJob(this.options.onEvent, event);
   }
 }
 
@@ -76,6 +75,7 @@ function validateDelivery(delivery: JobDelivery) {
   if (delivery.attempt !== undefined && (!Number.isInteger(delivery.attempt) || delivery.attempt < 1)) {
     throw new Error("job delivery attempt must be a positive integer");
   }
+  if (delivery.tenantId !== undefined) validateTenantId(delivery.tenantId);
   if (delivery.timeoutMs !== undefined && (!Number.isFinite(delivery.timeoutMs) || delivery.timeoutMs <= 0)) {
     throw new Error("job delivery timeoutMs must be a positive number");
   }

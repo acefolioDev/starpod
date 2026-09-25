@@ -46,6 +46,9 @@ export function pod(input: {
   if (!input.prefix.startsWith("/")) {
     throw new Error(`Feature prefix must start with "/"`);
   }
+  if (input.prefix.startsWith("//") || /[?#\r\n]/.test(input.prefix)) {
+    throw new Error("Feature prefix must be a path without a query, fragment, or control characters");
+  }
   assertUnique([...input.uses ?? [], ...input.providers ?? []], "feature provider");
 
   return Object.freeze({

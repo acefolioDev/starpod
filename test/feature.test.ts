@@ -63,6 +63,11 @@ describe("application composition", () => {
     })).toThrow("Duplicate feature provider: Database");
   });
 
+  test("rejects unsafe feature prefixes", () => {
+    expect(() => pod({ name: "unsafe", prefix: "//users", controller: Controller })).toThrow("Feature prefix");
+    expect(() => pod({ name: "unsafe", prefix: "/users?all=true", controller: Controller })).toThrow("Feature prefix");
+  });
+
   test("rejects feature names that the architecture seal cannot represent", () => {
     expect(() => feature("user-profile")).toThrow(
       'Feature name must be a single lowercase word (got "user-profile")',

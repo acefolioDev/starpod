@@ -50,4 +50,55 @@ describe("DI lifetimes", () => {
       "RequestContext is request-scoped and can only be resolved inside a request scope",
     );
   });
+
+  test("rejects singleton providers that depend on request state", () => {
+    class RequestContext {
+      static readonly lifetime = "request" as const;
+    }
+    class Singleton {
+      static readonly inject = [RequestContext] as const;
+      constructor(_: RequestContext) {}
+    }
+
+    const root = new Container([RequestContext, Singleton]);
+
+    expect(() => root.validate(Singleton)).toThrow("singleton cannot depend on request-scoped");
+    expect(() => root.requestScope().resolve(Singleton)).toThrow("singleton cannot depend on request-scoped");
+  });
+
+  test("disposes lifecycle-aware transient providers", async () => {
+    let disposed = 0;
+    class Transient {
+      static readonly lifetime = "transient" as const;
+      dispose() {
+        disposed += 1;
+      }
+    }
+
+    const container = new Container([Transient]);
+    container.resolve(Transient);
+    container.resolve(Transient);
+    await container.dispose();
+
+    expect(disposed).toBe(2);
+  });
+
+  test("initializes async lifecycle-aware transient providers", async () => {
+    const events: string[] = [];
+    class Transient {
+      static readonly lifetime = "transient" as const;
+      async initialize() {
+        events.push("initialize");
+      }
+      dispose() {
+        events.push("dispose");
+      }
+    }
+
+    const container = new Container([Transient]);
+    await container.resolveAsync(Transient);
+    await container.dispose();
+
+    expect(events).toEqual(["initialize", "dispose"]);
+  });
 });

@@ -26,7 +26,7 @@ export async function composeApplication(
     featureScopes.push(container);
     const controller = await container.resolveAsync(feature.controller);
     featureScopesByPrefix.push({ prefix: feature.prefix, container });
-    elysia.group(feature.prefix, (group) => {
+    elysia.group(feature.prefix === "/" ? "" : feature.prefix, (group) => {
       const routes = controller.routes as unknown as (app: AnyElysia) => AnyElysia;
       const registered = routes.call(controller, group);
       if (!registered || typeof registered !== "object") {

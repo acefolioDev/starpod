@@ -26,6 +26,17 @@ describe("lock stores", () => {
     })).resolves.toBeUndefined();
   });
 
+  test("never evicts an active lease when the store is bounded", async () => {
+    const store = new MemoryLockStore({ maxKeys: 1 });
+    const first = await store.acquire("first", 1_000);
+
+    expect(first).not.toBeNull();
+    expect(await store.acquire("second", 1_000)).toBeNull();
+    expect(await store.acquire("first", 1_000)).toBeNull();
+    await first?.release();
+    expect(await store.acquire("second", 1_000)).not.toBeNull();
+  });
+
   test("rejects unsafe keys and invalid lifetimes", () => {
     const store = new MemoryLockStore();
     expect(() => store.acquire("bad\nkey", 100)).toThrow("lock key");

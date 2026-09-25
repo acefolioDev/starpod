@@ -32,5 +32,6 @@ export function requestIdFrom(headers: Headers): string {
 /** Read a safe upstream correlation ID, falling back to the request ID. */
 export function correlationIdFrom(headers: Headers, fallback: string = crypto.randomUUID()): string {
   const supplied = headers.get(CORRELATION_ID_HEADER);
-  return supplied && REQUEST_ID_PATTERN.test(supplied) ? supplied : fallback;
+  if (supplied && REQUEST_ID_PATTERN.test(supplied)) return supplied;
+  return REQUEST_ID_PATTERN.test(fallback) ? fallback : crypto.randomUUID();
 }

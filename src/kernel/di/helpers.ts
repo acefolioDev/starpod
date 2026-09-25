@@ -4,7 +4,9 @@ import {
   type InjectionToken,
   type Initializable,
   type Disposable,
+  type ProviderLifetime,
   type Provider,
+  providerLifetime,
 } from "./providers";
 
 export function tokenName(token: InjectionToken): string {
@@ -42,4 +44,30 @@ export function assertConstructorArity(
       `${tokenName(token)}: inject.length (${dependencies.length}) must match constructor parameters (${parameterCount})`,
     );
   }
+}
+
+export function assertNoRequestDependency(
+  token: InjectionToken,
+  lifetime: ProviderLifetime,
+  dependencies: readonly InjectionToken[],
+  providerFor: (dependency: InjectionToken) => Provider | undefined,
+) {
+  if (lifetime !== "singleton") return;
+  for (const dependency of dependencies) {
+    const provider = providerFor(dependency);
+    if (provider && providerLifetime(provider) === "request") {
+      throw new GraphError(`${tokenName(token)} singleton cannot depend on request-scoped ${tokenName(dependency)}`);
+    }
+  }
+}
+
+export function rememberTransient(
+  instances: Map<InjectionToken, unknown>,
+  creationOrder: InjectionToken[],
+  instance: unknown,
+) {
+  if (!isDisposable(instance) && !isInitializable(instance)) return;
+  const token = Symbol("transient");
+  instances.set(token, instance);
+  creationOrder.push(token);
 }

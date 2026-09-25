@@ -87,5 +87,13 @@ describe("MigrationRunner", () => {
       { id: "002", up: () => undefined },
     ], orderStore, undefined);
     await expect(ordered.status()).rejects.toThrow("Applied migrations are out of order: 001");
+
+    const { store: gapStore } = storeFor(["001", "003"]);
+    const gapped = new MigrationRunner([
+      { id: "001", up: () => undefined },
+      { id: "002", up: () => undefined },
+      { id: "003", up: () => undefined },
+    ], gapStore, undefined);
+    await expect(gapped.status()).rejects.toThrow("Applied migrations have a gap before: 003");
   });
 });

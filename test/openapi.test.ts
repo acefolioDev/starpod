@@ -64,6 +64,7 @@ describe("OpenAPI document", () => {
     expect(document.paths["/users/{id}"]?.get).toMatchObject({
       responses: {
         "400": { description: "Bad request" },
+        "406": { description: "Response representation not available" },
         "422": { description: "Request validation failed" },
         "500": { description: "Internal server error" },
       },

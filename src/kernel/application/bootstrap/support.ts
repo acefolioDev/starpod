@@ -192,16 +192,15 @@ export async function disposeRequestScope(
 }
 
 export function parentForRequest(
-  url: string,
+  route: string,
   features: readonly { readonly prefix: string; readonly container: Container }[],
   root: Container | undefined,
 ) {
-  const path = pathFromUrl(url);
+  const path = pathFromUrl(route);
   const feature = [...features]
     .sort((left, right) => right.prefix.length - left.prefix.length)
-    .find(({ prefix }) => path === prefix || path.startsWith(`${prefix}/`));
+    .find(({ prefix }) => prefix === "/" || path === prefix || path.startsWith(`${prefix}/`));
   if (feature) return feature.container;
   if (root) return root;
   throw new GraphError("request dependency scope is not available before bootstrap completes");
 }
-

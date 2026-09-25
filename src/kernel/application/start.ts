@@ -41,14 +41,28 @@ export async function start(
     throw error;
   }
 
-  let stopped = false;
+  let stopping: Promise<void> | undefined;
   return {
     server,
-    async stop(closeActiveConnections) {
-      if (stopped) return;
-      stopped = true;
-      cleanup?.();
-      await server.stop(closeActiveConnections);
+    stop(closeActiveConnections) {
+      if (stopping) return stopping;
+      stopping = (async () => {
+        cleanup?.();
+        const failures: unknown[] = [];
+        try {
+          await server.stop(closeActiveConnections);
+        } catch (error) {
+          failures.push(error);
+        }
+        try {
+          await disposeBootstrap(server);
+        } catch (error) {
+          failures.push(error);
+        }
+        if (failures.length === 1) throw failures[0];
+        if (failures.length > 1) throw new AggregateError(failures, "application stop failed");
+      })();
+      return stopping;
     },
   };
 }

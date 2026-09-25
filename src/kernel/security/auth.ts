@@ -35,12 +35,15 @@ export function bearerToken(request: Request): string | undefined {
   const authorization = request.headers.get("authorization");
   if (!authorization) return undefined;
   const match = /^Bearer\s+([^\s]+)$/i.exec(authorization.trim());
-  return match?.[1];
+  const token = match?.[1];
+  return token && token.length <= 4_096 ? token : undefined;
 }
 
 /** Read an API key from an explicit header without accepting query parameters. */
 export function apiKeyFrom(request: Request, options: ApiKeyOptions = {}): string | undefined {
-  const value = request.headers.get(options.header ?? "x-api-key")?.trim();
+  const header = options.header ?? "x-api-key";
+  if (!COOKIE_NAME_PATTERN.test(header)) return undefined;
+  const value = request.headers.get(header)?.trim();
   if (!value || value.length > 4_096) return undefined;
   if (options.prefix === undefined) return value;
   if (!value.startsWith(options.prefix)) return undefined;

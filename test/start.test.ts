@@ -38,4 +38,30 @@ describe("start", () => {
     await started.stop();
     expect(disposals).toBe(1);
   });
+
+  test("shares concurrent stop calls and waits for provider disposal", async () => {
+    let disposals = 0;
+    class Resource {
+      dispose() {
+        disposals += 1;
+      }
+    }
+    class Controller {
+      static readonly inject = [Resource] as const;
+      constructor(private readonly resource: Resource) {}
+      routes(app: StarpodElysia) {
+        return app.get("/", () => this.resource instanceof Resource ? "ok" : "bad");
+      }
+    }
+    const started = await start(
+      application({ features: [pod({ name: "concurrent", prefix: "/concurrent", controller: Controller })], providers: [Resource] }),
+      { listen: 0, printFeatures: false, seal: false, shutdown: false },
+    );
+
+    const first = started.stop();
+    const second = started.stop();
+    expect(second).toBe(first);
+    await Promise.all([first, second]);
+    expect(disposals).toBe(1);
+  });
 });

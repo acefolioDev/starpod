@@ -30,10 +30,10 @@ export class MemoryLockStore implements LockStore {
     validateKey(key);
     validateTtl(ttlMs);
     const now = this.now();
+    this.purge(now);
     const existing = this.locks.get(key);
-    if (existing && existing.expiresAt > now) return null;
-    if (existing) this.locks.delete(key);
-    if (this.locks.size >= this.maxKeys) this.locks.delete(this.locks.keys().next().value!);
+    if (existing) return null;
+    if (this.locks.size >= this.maxKeys) return null;
 
     const token = crypto.randomUUID();
     this.locks.set(key, { token, expiresAt: now + ttlMs });
@@ -45,6 +45,12 @@ export class MemoryLockStore implements LockStore {
         if (this.locks.get(key)?.token === token) this.locks.delete(key);
       },
     };
+  }
+
+  private purge(now: number) {
+    for (const [key, lock] of this.locks) {
+      if (lock.expiresAt <= now) this.locks.delete(key);
+    }
   }
 }
 

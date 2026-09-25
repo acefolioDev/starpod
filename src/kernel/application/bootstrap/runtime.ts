@@ -56,8 +56,8 @@ export async function bootstrap(app: Application, options: BootstrapOptions = {}
   const featureScopesByPrefix: Array<{ readonly prefix: string; readonly container: Container }> = [];
   let root: Container | undefined;
   const environment = environmentFrom(options);
-  const requestContainerFor = (request: Request) => {
-    const parent = parentForRequest(request.url, featureScopesByPrefix, root);
+  const requestContainerFor = (request: Request, route: string) => {
+    const parent = parentForRequest(route, featureScopesByPrefix, root);
     let requestContainer = requestScopes.get(request);
     if (!requestContainer) {
       requestContainer = parent.requestScope();
@@ -113,31 +113,33 @@ export async function bootstrap(app: Application, options: BootstrapOptions = {}
     throw error;
   }
 
-  let disposed = false;
-  const dispose = async () => {
-    if (disposed) return;
-    disposed = true;
-    const requestFailures: unknown[] = [];
-    try {
-      for (const scope of [...activeRequestScopes]) {
+  let disposal: Promise<void> | undefined;
+  const dispose = () => {
+    if (disposal) return disposal;
+    disposal = (async () => {
+      const requestFailures: unknown[] = [];
+      try {
+        for (const scope of [...activeRequestScopes]) {
+          try {
+            await scope.dispose();
+          } catch (error) {
+            requestFailures.push(error);
+          }
+        }
+        activeRequestScopes.clear();
         try {
-          await scope.dispose();
+          await disposeScopes(featureScopes, compositionRoot, applicationRoot);
         } catch (error) {
           requestFailures.push(error);
         }
+        if (requestFailures.length > 0) {
+          throw new AggregateError(requestFailures, "application disposal failed");
+        }
+      } finally {
+        bootstrapDisposals.delete(elysia);
       }
-      activeRequestScopes.clear();
-      try {
-        await disposeScopes(featureScopes, compositionRoot, applicationRoot);
-      } catch (error) {
-        requestFailures.push(error);
-      }
-      if (requestFailures.length > 0) {
-        throw new AggregateError(requestFailures, "application disposal failed");
-      }
-    } finally {
-      bootstrapDisposals.delete(elysia);
-    }
+    })();
+    return disposal;
   };
   elysia.onStop(dispose);
   bootstrapDisposals.set(elysia, dispose);

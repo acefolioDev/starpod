@@ -93,7 +93,8 @@ export function sessions<TSession extends Session>(
     const id = cookieValue(request, cookie.name);
     const validId = id !== undefined && SESSION_ID_PATTERN.test(id);
     const session = validId ? await options.store.get(id) : null;
-    if (session && SESSION_ID_PATTERN.test(session.id) && Number.isFinite(session.expiresAt) && session.expiresAt > now()) {
+    if (session && session.id === id && SESSION_ID_PATTERN.test(session.id) &&
+      Number.isFinite(session.expiresAt) && session.expiresAt > now()) {
       return { session };
     }
 
@@ -105,7 +106,10 @@ export function sessions<TSession extends Session>(
 }
 
 export function requireSession<TSession extends Session>(session: TSession | null | undefined): TSession {
-  if (!session || session.expiresAt <= Date.now()) throw Unauthorized("A valid session is required");
+  if (!session || !SESSION_ID_PATTERN.test(session.id) ||
+    !Number.isFinite(session.expiresAt) || session.expiresAt <= Date.now()) {
+    throw Unauthorized("A valid session is required");
+  }
   return session;
 }
 

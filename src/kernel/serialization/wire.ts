@@ -20,15 +20,19 @@ export function assertJsonValue(
   if (seen.has(value)) throw new Error(label + " contains a cyclic payload");
   seen.add(value);
 
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => assertJsonValue(item, label + "[" + index + "]", seen));
-  } else {
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) {
-      throw new Error(label + " must contain only plain objects");
+  try {
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => assertJsonValue(item, label + "[" + index + "]", seen));
+    } else {
+      const prototype = Object.getPrototypeOf(value);
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw new Error(label + " must contain only plain objects");
+      }
+      for (const [key, item] of Object.entries(value)) {
+        assertJsonValue(item, label + "." + key, seen);
+      }
     }
-    for (const [key, item] of Object.entries(value)) {
-      assertJsonValue(item, label + "." + key, seen);
-    }
+  } finally {
+    seen.delete(value);
   }
 }

@@ -30,6 +30,9 @@ export class DatabaseConnection<TClient, TTransaction = TClient> {
   private hasClient = false;
   private state: DatabaseState = "disconnected";
   private initializing: Promise<void> | undefined;
+  private disposing: Promise<void> | undefined;
+  private activeOperations = 0;
+  private readonly idleWaiters: Array<() => void> = [];
   private readonly onEvent: ((event: DatabaseEvent) => void) | undefined;
   private readonly now: () => number;
 
@@ -80,13 +83,19 @@ export class DatabaseConnection<TClient, TTransaction = TClient> {
 
   async use<TResult>(work: (client: TClient) => TResult | Promise<TResult>): Promise<TResult> {
     await this.initialize();
-    return work(this.requireClient());
+    const release = this.beginOperation();
+    try {
+      return await work(this.requireClient());
+    } finally {
+      release();
+    }
   }
 
   async transaction<TResult>(
     work: (transaction: TTransaction) => TResult | Promise<TResult>,
   ): Promise<TResult> {
     await this.initialize();
+    const release = this.beginOperation();
     const startedAt = this.now();
     this.observe({ operation: "transaction", status: "start" });
     try {
@@ -96,18 +105,33 @@ export class DatabaseConnection<TClient, TTransaction = TClient> {
     } catch (error) {
       this.observe({ operation: "transaction", status: "failure", durationMs: this.duration(startedAt) });
       throw error;
+    } finally {
+      release();
     }
   }
 
   async ping(signal?: AbortSignal) {
     await this.initialize();
-    if (this.adapter.ping) await this.adapter.ping(this.requireClient(), signal);
+    if (!this.adapter.ping) return;
+    const release = this.beginOperation();
+    try {
+      await this.adapter.ping(this.requireClient(), signal);
+    } finally {
+      release();
+    }
   }
 
   async dispose() {
+    if (this.disposing) return this.disposing;
     if (this.state === "closed") return;
     this.state = "closed";
+    this.disposing = this.finishDispose();
+    return this.disposing;
+  }
+
+  private async finishDispose() {
     await this.initializing?.catch(() => undefined);
+    await this.waitForIdle();
 
     if (!this.hasClient) return;
     const client = this.client as TClient;
@@ -129,6 +153,25 @@ export class DatabaseConnection<TClient, TTransaction = TClient> {
       throw new Error("database connection is not ready");
     }
     return this.client as TClient;
+  }
+
+  private beginOperation() {
+    this.requireClient();
+    this.activeOperations += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.activeOperations -= 1;
+      if (this.activeOperations === 0) {
+        for (const resolve of this.idleWaiters.splice(0)) resolve();
+      }
+    };
+  }
+
+  private waitForIdle() {
+    if (this.activeOperations === 0) return Promise.resolve();
+    return new Promise<void>((resolve) => this.idleWaiters.push(resolve));
   }
 
   private duration(startedAt: number) {

@@ -43,6 +43,20 @@ describe("sessions", () => {
     expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
   });
 
+  test("rejects a store result for a different session ID", async () => {
+    const requested = createSessionId();
+    const different = { id: createSessionId(), expiresAt: Date.now() + 10_000 };
+    const app = sessions({
+      required: true,
+      store: { get: () => different },
+    })(new Elysia()).get("/", () => "ok");
+
+    const response = await app.handle(new Request("http://localhost/", {
+      headers: { cookie: `session=${requested}` },
+    }));
+    expect(response.status).toBe(401);
+  });
+
   test("validates cookie settings and required values", () => {
     const id = createSessionId();
     expect(() => sessionCookie(id, { sameSite: "none", secure: false })).toThrow("Secure");
@@ -51,5 +65,7 @@ describe("sessions", () => {
     clearSessionCookie(headers);
     expect(headers["set-cookie"]).toContain("Max-Age=0");
     expect(() => requireSession({ id, expiresAt: 0 })).toThrow("session");
+    expect(() => requireSession({ id: "short", expiresAt: Date.now() + 10_000 })).toThrow("session");
+    expect(() => requireSession({ id, expiresAt: Number.NaN })).toThrow("session");
   });
 });

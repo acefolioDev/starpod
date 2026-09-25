@@ -33,7 +33,7 @@ type BootstrapHookContext = {
   readonly recordedMetrics: WeakSet<Request>;
   readonly recordedInspector: WeakSet<Request>;
   readonly activeRequestScopes: Set<Container>;
-  readonly requestContainerFor: (request: Request) => Container;
+  readonly requestContainerFor: (request: Request, route: string) => Container;
 };
 
 export function createBootstrapElysia(
@@ -99,10 +99,10 @@ export function createBootstrapElysia(
         requestId,
         correlationId,
         resolve: <T>(token: InjectionToken<T>) => {
-          return requestContainerFor(request).resolve(token);
+          return requestContainerFor(request, route).resolve(token);
         },
         resolveAsync: async <T>(token: InjectionToken<T>) => {
-          return requestContainerFor(request).resolveAsync(token);
+          return requestContainerFor(request, route).resolveAsync(token);
         },
       };
     })

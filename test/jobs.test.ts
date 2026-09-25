@@ -44,6 +44,7 @@ describe("JobRegistry", () => {
 
     const envelope = encodeJob(job, { userId: "user-1" }, {
       id: "job-1",
+      tenantId: "tenant-1",
       delayMs: 100,
       maxAttempts: 3,
       backoffMs: () => 999,
@@ -52,7 +53,7 @@ describe("JobRegistry", () => {
     expect(envelope).toEqual({
       name: "sync-user",
       payload: { userId: "user-1" },
-      options: { id: "job-1", delayMs: 100, maxAttempts: 3 },
+      options: { id: "job-1", tenantId: "tenant-1", delayMs: 100, maxAttempts: 3 },
     });
     expect(decodeJob(job, envelope.payload)).toEqual({ userId: "user-1" });
     expect(() => encodeJob({ name: "local-only", handle: () => undefined }, {}))
@@ -144,6 +145,7 @@ describe("JobWorker", () => {
       },
       handle: (payload, context) => {
         expect(payload.index).toBe("users");
+        expect(context.tenantId).toBe("tenant-1");
         context.reportProgress({ completed: 1, total: 1 });
       },
     });
@@ -156,6 +158,7 @@ describe("JobWorker", () => {
       name: "rebuild-index",
       payload: { index: "users" },
       attempt: 2,
+      tenantId: "tenant-1",
     });
 
     expect(events).toEqual(["start", "progress", "success"]);

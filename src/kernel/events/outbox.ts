@@ -1,4 +1,5 @@
 import type { EventEnvelope, EventEnvelopePublisher, EventMap, EventRegistry } from "./events";
+import { validateTenantId } from "../security/tenant-id";
 
 export type OutboxRecord = {
   readonly id: string;
@@ -53,10 +54,15 @@ export class EventOutbox<TEvents extends EventMap, TTransaction = unknown> {
   async enqueue<TKey extends keyof TEvents & string>(
     name: TKey,
     payload: TEvents[TKey],
-    options: { readonly transaction?: TTransaction } = {},
+    options: { readonly transaction?: TTransaction; readonly tenantId?: string } = {},
   ): Promise<OutboxRecord> {
+    if (options.tenantId !== undefined) validateTenantId(options.tenantId);
     const id = validateId(this.idFactory());
-    const envelope = Object.freeze({ ...this.registry.encode(name, payload), id });
+    const envelope = Object.freeze({
+      ...this.registry.encode(name, payload),
+      id,
+      ...(options.tenantId === undefined ? {} : { tenantId: options.tenantId }),
+    });
     const record = Object.freeze({
       id,
       envelope,

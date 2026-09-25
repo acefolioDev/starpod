@@ -2,22 +2,15 @@ import {
   GraphError,
   providerLifetime,
   providerToken,
-  type AsyncFactoryProvider,
-  type Constructor,
-  type Disposable,
   type InjectionToken,
-  type Initializable,
   type Provider,
 } from "./providers";
 import {
-  assertConstructorArity,
-  dependenciesOf,
-  isAsyncFactory,
-  isDisposable,
-  isInitializable,
+  assertConstructorArity, dependenciesOf, isAsyncFactory, isInitializable,
+  assertNoRequestDependency, rememberTransient,
   tokenName,
 } from "./helpers";
-
+import { disposeContainer } from "./dispose";
 export class Container {
   private readonly providers = new Map<InjectionToken, Provider>();
   private readonly instances = new Map<InjectionToken, unknown>();
@@ -25,6 +18,7 @@ export class Container {
   private readonly creationOrder: InjectionToken[] = [];
   private readonly initializedTokens = new Set<InjectionToken>();
   private disposed = false;
+  private disposing: Promise<void> | undefined;
   private initializing: Promise<void> | undefined;
   constructor(
     providers: readonly Provider[] = [],
@@ -77,25 +71,18 @@ export class Container {
       this.initializing = undefined;
     }
   }
-  async dispose() {
+  dispose() {
+    if (this.disposing) return this.disposing;
     if (this.disposed) return;
     this.disposed = true;
-    await Promise.allSettled([...this.pending.values()]);
-    const failures: unknown[] = [];
-    for (const token of [...this.creationOrder].reverse()) {
-      const instance = this.instances.get(token);
-      if (!isDisposable(instance)) continue;
-      try {
-        await instance.dispose();
-      } catch (error) {
-        failures.push(error);
-      }
-    }
-    this.instances.clear();
-    this.pending.clear();
-    this.creationOrder.length = 0;
-    this.initializedTokens.clear();
-    if (failures.length > 0) throw new AggregateError(failures, "container disposal failed");
+    this.disposing = disposeContainer({
+      pending: this.pending,
+      initializing: this.initializing,
+      instances: this.instances,
+      creationOrder: this.creationOrder,
+      initializedTokens: this.initializedTokens,
+    });
+    return this.disposing;
   }
   private async initializeInstances() {
     const failures: unknown[] = [];
@@ -115,7 +102,7 @@ export class Container {
     }
     if (failures.length > 0) throw new AggregateError(failures, "container initialization failed");
   }
-  private build<T>(token: InjectionToken<T>, stack: InjectionToken[]): T {
+  private build<T>(token: InjectionToken<T>, stack: InjectionToken[], transientScope: Container = this): T {
     const owner = this.ownerOf(token);
     if (!owner) {
       throw new GraphError(
@@ -146,9 +133,12 @@ export class Container {
       );
     }
     const dependencies = dependenciesOf(provider);
+    assertNoRequestDependency(token, lifetime, dependencies, (dependency) =>
+      this.ownerOf(dependency)?.providers.get(dependency));
     assertConstructorArity(provider, token, dependencies);
     const next = [...stack, token];
-    const args = dependencies.map((dependency) => this.build(dependency, next));
+    const dependencyScope = lifetime === "singleton" ? owner : transientScope;
+    const args = dependencies.map((dependency) => this.build(dependency, next, dependencyScope));
     const instance = typeof provider === "function"
       ? new (provider as unknown as new (...args: unknown[]) => T)(...args)
       : "useValue" in provider
@@ -157,10 +147,10 @@ export class Container {
     if (cache) {
       cache.instances.set(token, instance);
       cache.creationOrder.push(token);
-    }
+    } else rememberTransient(transientScope.instances, transientScope.creationOrder, instance);
     return instance;
   }
-  private async buildAsync<T>(token: InjectionToken<T>, stack: InjectionToken[]): Promise<T> {
+  private async buildAsync<T>(token: InjectionToken<T>, stack: InjectionToken[], transientScope: Container = this): Promise<T> {
     const owner = this.ownerOf(token);
     if (!owner) {
       throw new GraphError(
@@ -187,8 +177,16 @@ export class Container {
       const pending = cache.pending.get(token);
       if (pending) return pending as Promise<T>;
     }
-    const work = this.constructAsync(provider, token, stack);
-    if (!cache) return work;
+    const dependencies = dependenciesOf(provider);
+    assertNoRequestDependency(token, lifetime, dependencies, (dependency) =>
+      this.ownerOf(dependency)?.providers.get(dependency));
+    const dependencyScope = lifetime === "singleton" ? owner : transientScope;
+    const work = this.constructAsync(provider, token, stack, dependencyScope);
+    if (!cache) {
+      const instance = await work;
+      rememberTransient(transientScope.instances, transientScope.creationOrder, instance);
+      return instance;
+    }
     cache.pending.set(token, work);
     try {
       const instance = await work;
@@ -199,15 +197,11 @@ export class Container {
       cache.pending.delete(token);
     }
   }
-  private async constructAsync<T>(
-    provider: Provider,
-    token: InjectionToken<T>,
-    stack: InjectionToken[],
-  ): Promise<T> {
+  private async constructAsync<T>(provider: Provider, token: InjectionToken<T>, stack: InjectionToken[], transientScope: Container): Promise<T> {
     const dependencies = dependenciesOf(provider);
     assertConstructorArity(provider, token, dependencies);
     const next = [...stack, token];
-    const args = await Promise.all(dependencies.map((dependency) => this.buildAsync(dependency, next)));
+    const args = await Promise.all(dependencies.map((dependency) => this.buildAsync(dependency, next, transientScope)));
     if (typeof provider === "function") {
       return new (provider as unknown as new (...args: unknown[]) => T)(...args);
     }
@@ -238,6 +232,8 @@ export class Container {
       );
     }
     const dependencies = dependenciesOf(provider);
+    assertNoRequestDependency(token, lifetime, dependencies, (dependency) =>
+      this.ownerOf(dependency)?.providers.get(dependency));
     assertConstructorArity(provider, token, dependencies);
     const next = [...stack, token];
     for (const dependency of dependencies) this.validateToken(dependency, next);

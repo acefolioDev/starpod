@@ -52,12 +52,22 @@ export class MemoryRateLimitStore implements RateLimitStore {
   }
 
   consume(key: string, limit: number, windowMs: number): RateLimitDecision {
+    validateKey(key);
+    validateLimit(limit);
+    validateWindow(windowMs);
     const now = this.now();
     this.purge(now);
 
     let bucket = this.buckets.get(key);
     if (!bucket || bucket.resetAt <= now) {
-      if (!bucket && this.buckets.size >= this.maxKeys) this.buckets.delete(this.buckets.keys().next().value!);
+      if (!bucket && this.buckets.size >= this.maxKeys) {
+        return {
+          allowed: false,
+          limit,
+          remaining: 0,
+          resetAt: this.nextResetAt(now, windowMs),
+        };
+      }
       bucket = { count: 0, resetAt: now + windowMs };
       this.buckets.set(key, bucket);
     }
@@ -79,6 +89,12 @@ export class MemoryRateLimitStore implements RateLimitStore {
     for (const [key, bucket] of this.buckets) {
       if (bucket.resetAt <= now) this.buckets.delete(key);
     }
+  }
+
+  private nextResetAt(now: number, fallbackWindowMs: number) {
+    let next = now + fallbackWindowMs;
+    for (const bucket of this.buckets.values()) next = Math.min(next, bucket.resetAt);
+    return next;
   }
 }
 
@@ -124,14 +140,24 @@ export function rateLimit(options: RateLimitOptions) {
 }
 
 function validateOptions(options: RateLimitOptions) {
-  if (!Number.isInteger(options.limit) || options.limit < 1) {
-    throw new Error("rateLimit limit must be a positive integer");
-  }
-  if (!Number.isFinite(options.windowMs) || options.windowMs <= 0) {
-    throw new Error("rateLimit windowMs must be a positive number");
-  }
+  validateLimit(options.limit);
+  validateWindow(options.windowMs);
   if (options.name !== undefined && (!options.name || options.name.length > 128 || /[\r\n]/.test(options.name))) {
     throw new Error("rateLimit name must be a non-empty single-line string of at most 128 characters");
+  }
+}
+
+function validateLimit(limit: number) {
+  if (!Number.isInteger(limit) || limit < 1) throw new Error("rateLimit limit must be a positive integer");
+}
+
+function validateWindow(windowMs: number) {
+  if (!Number.isFinite(windowMs) || windowMs <= 0) throw new Error("rateLimit windowMs must be a positive number");
+}
+
+function validateKey(key: string) {
+  if (!key || key.length > 512 || /[\r\n]/.test(key)) {
+    throw new Error("rateLimit key must be a non-empty single-line string of at most 512 characters");
   }
 }
 

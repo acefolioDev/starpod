@@ -26,6 +26,7 @@ describe("CORS", () => {
     expect(response.headers.get("access-control-allow-credentials")).toBe("true");
     expect(response.headers.get("access-control-allow-methods")).toBe("GET, POST");
     expect(response.headers.get("access-control-max-age")).toBe("600");
+    expect(response.headers.get("vary")).toBe("Origin, Access-Control-Request-Method, Access-Control-Request-Headers");
   });
 
   test("does not allow disallowed origins and rejects wildcard credentials", async () => {

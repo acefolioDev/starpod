@@ -93,6 +93,37 @@ describe("MemoryCache", () => {
     expect(loads).toBe(1);
   });
 
+  test("validates getOrSet inputs before running the loader", async () => {
+    const cache = new MemoryCache();
+    let loads = 0;
+    const loader = () => { loads += 1; return "value"; };
+
+    await expect(cache.getOrSet("", loader)).rejects.toThrow("cache key");
+    await expect(cache.getOrSet("key", loader, { ttlMs: Number.NaN })).rejects.toThrow("ttlMs");
+    await expect(cache.getOrSet("key", loader, { tags: ["bad\n tag"] })).rejects.toThrow("cache tag");
+    expect(loads).toBe(0);
+  });
+
+  test("keeps active loader coalescing when entries are cleared", async () => {
+    const cache = new MemoryCache();
+    let loads = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const loader = async () => {
+      loads += 1;
+      await gate;
+      return "loaded";
+    };
+
+    const first = cache.getOrSet("config", loader);
+    cache.clear();
+    const second = cache.getOrSet("config", loader);
+    release();
+
+    expect(await Promise.all([first, second])).toEqual(["loaded", "loaded"]);
+    expect(loads).toBe(1);
+  });
+
   test("keeps getOrSet coalescing and tags inside a namespace", async () => {
     const cache = new MemoryCache();
     const namespaced = cache.namespace("users");

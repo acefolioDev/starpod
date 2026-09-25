@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { EventBus, EventConsumer, EventDispatcher, EventRegistry } from "../src/kernel/events/events";
+import { MemoryEventIdempotencyStore } from "../src/kernel/events/idempotency";
 import type { JsonValue } from "../src/kernel/serialization/wire";
 
 type Events = {
@@ -122,11 +123,12 @@ describe("EventDispatcher", () => {
       },
     });
 
-    await dispatcher.emit("user.created", { userId: "user-1" });
+    await dispatcher.emit("user.created", { userId: "user-1" }, { tenantId: "tenant-1" });
 
     expect(envelopes).toEqual([{
       name: "user.created",
       version: "1",
+      tenantId: "tenant-1",
       payload: { userId: "user-1" },
     }]);
   });
@@ -142,16 +144,26 @@ describe("EventConsumer", () => {
     });
     const bus = new EventBus<Events>();
     const received: string[] = [];
-    bus.on("user.created", ({ id }) => { received.push(id); });
+    const contexts: unknown[] = [];
+    bus.on("user.created", ({ id }, context) => {
+      received.push(id);
+      contexts.push(context);
+    });
     const consumer = new EventConsumer(registry, bus);
 
     await consumer.consume({
       name: "user.created",
       version: "1",
+      tenantId: "tenant-1",
       payload: { id: "user-1" },
     });
 
     expect(received).toEqual(["user-1"]);
+    expect(contexts).toEqual([{
+      name: "user.created",
+      version: "1",
+      tenantId: "tenant-1",
+    }]);
     await expect(consumer.consume({
       name: "user.created",
       version: "2",
@@ -184,5 +196,50 @@ describe("EventConsumer", () => {
 
     expect(ids).toEqual(["event-1", "event-1"]);
     expect(calls).toBe(1);
+  });
+
+  test("scopes duplicate delivery by tenant", async () => {
+    const registry = new EventRegistry<Events>();
+    registry.register("user.created", {
+      encode: (payload) => payload,
+      decode: (payload) => payload as Events["user.created"],
+    });
+    const bus = new EventBus<Events>();
+    let calls = 0;
+    bus.on("user.created", () => { calls += 1; });
+    const consumer = new EventConsumer(registry, bus, {
+      idempotency: new MemoryEventIdempotencyStore(),
+    });
+
+    const delivery = {
+      id: "event-1",
+      name: "user.created",
+      payload: { id: "user-1" },
+    } as const;
+    await consumer.consume({ ...delivery, tenantId: "tenant-a" });
+    await consumer.consume({ ...delivery, tenantId: "tenant-b" });
+    await consumer.consume({ ...delivery, tenantId: "tenant-a" });
+
+    expect(calls).toBe(2);
+  });
+
+  test("skips decoding an already completed duplicate delivery", async () => {
+    const registry = new EventRegistry<{ "cache.updated": { id: string } }>();
+    let decodes = 0;
+    registry.register("cache.updated", {
+      encode: (payload) => payload,
+      decode: (payload) => { decodes += 1; return payload as { id: string }; },
+    });
+    const consumer = new EventConsumer(
+      registry,
+      new EventBus<{ "cache.updated": { id: string } }>(),
+      { idempotency: new MemoryEventIdempotencyStore() },
+    );
+    const delivery = { id: "event-decode-once", name: "cache.updated" as const, payload: { id: "one" } };
+
+    await consumer.consume(delivery);
+    await consumer.consume({ ...delivery, payload: { id: "changed" } });
+
+    expect(decodes).toBe(1);
   });
 });

@@ -5,7 +5,7 @@
     "": {
       "name": "starpod",
       "dependencies": {
-        "elysia": "^1.4.0",
+        "elysia": "^1.4.30",
       },
       "devDependencies": {
         "@types/bun": "^1.4.0",

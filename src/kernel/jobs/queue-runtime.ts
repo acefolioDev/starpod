@@ -6,12 +6,14 @@ import type {
   JobObserver,
   JobReceipt,
 } from "./contracts";
-import { emitJobProgress } from "./progress";
+import { jobDeduplicationKey } from "./contracts";
+import { createJobContext } from "./context";
 
 export type QueuedJob = {
   readonly id: string;
   readonly definition: JobDefinition<unknown>;
   readonly payload: unknown;
+  readonly tenantId: string | undefined;
   readonly priority: number;
   readonly maxAttempts: number;
   readonly backoffMs: (attempt: number) => number;
@@ -173,19 +175,14 @@ async function executeJob(state: QueueRuntime, job: QueuedJob) {
 }
 
 async function runWithTimeout(state: QueueRuntime, job: QueuedJob, controller: AbortController) {
-  const context: JobContext = {
+  const context: JobContext = createJobContext({
     id: job.id,
     name: job.definition.name,
     attempt: job.attempt,
     signal: controller.signal,
-    reportProgress: (progress) => emitJobProgress(
-      state.onEvent,
-      job.id,
-      job.definition.name,
-      job.attempt,
-      progress,
-    ),
-  };
+    tenantId: job.tenantId,
+    onEvent: state.onEvent,
+  });
   const work = Promise.resolve(job.definition.handle(job.payload, context));
   if (job.timeoutMs === undefined) return await work;
 
@@ -207,6 +204,7 @@ function recordDeadLetter(state: QueueRuntime, job: QueuedJob, error: unknown) {
   state.dead.set(job.id, Object.freeze({
     id: job.id,
     name: job.definition.name,
+    ...(job.tenantId === undefined ? {} : { tenantId: job.tenantId }),
     payload: job.payload,
     attempts: job.attempt,
     error,
@@ -224,7 +222,9 @@ export function observeEvent(state: QueueRuntime, event: JobEvent) {
 }
 
 function clearDeduplication(state: QueueRuntime, job: QueuedJob) {
-  if (job.deduplicationKey) state.deduplicated.delete(job.definition.name + ":" + job.deduplicationKey);
+  if (job.deduplicationKey) {
+    state.deduplicated.delete(jobDeduplicationKey(job.definition.name, job.tenantId, job.deduplicationKey));
+  }
 }
 
 function armTimer(state: QueueRuntime) {

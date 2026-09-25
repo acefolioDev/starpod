@@ -22,8 +22,8 @@ try {
   await Bun.$`bun install ${tarball}`.cwd(consumer);
   await Bun.$`bun -e ${`
     import { Elysia } from "elysia";
-    import { EventConsumer, EventOutbox, HttpClient, JobWorker, apiKeyFrom, clientIp, cookieValue, csrfProtection, csrfToken, doctor, etag, openTelemetryMetrics, openTelemetryTracer, plugin, start } from "starpod";
-    if (typeof start !== "function" || typeof plugin !== "function" || typeof HttpClient !== "function" || typeof JobWorker !== "function" || typeof EventConsumer !== "function" || typeof EventOutbox !== "function" || typeof clientIp !== "function" || typeof openTelemetryMetrics !== "function" || typeof openTelemetryTracer !== "function" || typeof csrfProtection !== "function" || typeof csrfToken !== "function" || typeof doctor !== "function" || typeof etag !== "function") throw new Error("runtime exports missing");
+    import { EventConsumer, EventOutbox, HttpClient, JobWorker, MemoryEventIdempotencyStore, MemoryJobIdempotencyStore, apiKeyFrom, clientIp, cookieValue, csrfProtection, csrfToken, doctor, etag, negotiateContentType, openTelemetryMetrics, openTelemetryTracer, plugin, safeRedirect, start } from "starpod";
+    if (typeof start !== "function" || typeof plugin !== "function" || typeof HttpClient !== "function" || typeof JobWorker !== "function" || typeof EventConsumer !== "function" || typeof EventOutbox !== "function" || typeof MemoryEventIdempotencyStore !== "function" || typeof MemoryJobIdempotencyStore !== "function" || typeof clientIp !== "function" || typeof negotiateContentType !== "function" || typeof openTelemetryMetrics !== "function" || typeof openTelemetryTracer !== "function" || typeof safeRedirect !== "function" || typeof csrfProtection !== "function" || typeof csrfToken !== "function" || typeof doctor !== "function" || typeof etag !== "function") throw new Error("runtime exports missing");
     const request = new Request("http://starpod.test", { headers: { "x-api-key": "key", cookie: "session=value" } });
     if (apiKeyFrom(request) !== "key" || cookieValue(request, "session") !== "value") throw new Error("auth exports failed");
     const app = new Elysia().get("/", () => "ok");
@@ -63,6 +63,11 @@ try {
     !help.includes("starpod doctor") || !help.includes("starpod dev") ||
     !help.includes("starpod routes --json") || !help.includes("starpod make:feature")) {
     throw new Error("packaged CLI help is incomplete");
+  }
+
+  await Bun.$`bun ${cli} make:feature billing`.cwd(consumer);
+  if (!(await Bun.file(join(consumer, "src/features/billing/billing.controller.ts")).exists())) {
+    throw new Error("packaged feature generator did not create a controller");
   }
 
   console.log("package smoke test passed");

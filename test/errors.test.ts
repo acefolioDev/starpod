@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BadRequest, InternalServerError, NotFound, serializeError } from "../src/kernel/errors/errors";
+import { BadRequest, InternalServerError, NotFound, serializeError, StarpodError } from "../src/kernel/errors/errors";
 
 describe("errors", () => {
   test("serializes a safe application error", () => {
@@ -42,6 +42,14 @@ describe("errors", () => {
     expect(() => JSON.stringify(result.payload)).not.toThrow();
   });
 
+  test("bounds exposed validation arrays", () => {
+    const result = serializeError(BadRequest("Invalid input", Array.from({ length: 105 }, (_, index) => index)));
+    const details = result.payload.error.details as readonly unknown[];
+
+    expect(details).toHaveLength(101);
+    expect(details.at(-1)).toBe("[TRUNCATED]");
+  });
+
   test("hides unexpected error details in production responses", () => {
     const result = serializeError(new Error("database password=secret"));
 
@@ -81,5 +89,11 @@ describe("errors", () => {
         },
       },
     });
+  });
+
+  test("rejects invalid public error statuses", () => {
+    expect(() => new StarpodError({ status: 200, code: "INVALID", message: "bad" })).toThrow("HTTP error status");
+    expect(() => new StarpodError({ status: 500, code: "bad\ncode", message: "bad" })).toThrow("single-line");
+    expect(() => new StarpodError({ status: 400, code: "INVALID", message: "x".repeat(2_049) })).toThrow("2048");
   });
 });

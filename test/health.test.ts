@@ -89,4 +89,12 @@ describe("health routes", () => {
       checks: [{ name: "database", timeoutMs: 0, check: () => undefined }],
     })).toThrow("Health check timeoutMs must be a positive number: database");
   });
+
+  test("rejects unsafe or duplicate health paths", () => {
+    expect(() => healthRoutes(new Elysia(), { livenessPath: "/health/live?debug=true" })).toThrow("livenessPath");
+    expect(() => healthRoutes(new Elysia(), {
+      livenessPath: "/health/status",
+      readinessPath: "/health/status",
+    })).toThrow("must be different");
+  });
 });

@@ -2,6 +2,7 @@ import {
   exponentialBackoff,
   validateJob,
   validateJobId,
+  jobDeduplicationKey,
   type DeadLetter,
   type JobDefinition,
   type JobOptions,
@@ -46,7 +47,8 @@ export class InMemoryJobQueue implements JobQueue {
     if (!state.accepting) throw new Error("job queue has already been closed");
     validateJob(job, options);
     if (options.deduplicationKey) {
-      const existing = state.deduplicated.get(`${job.name}:${options.deduplicationKey}`);
+      const identity = jobDeduplicationKey(job.name, options.tenantId, options.deduplicationKey);
+      const existing = state.deduplicated.get(identity);
       if (existing) return existing;
     }
 
@@ -61,6 +63,7 @@ export class InMemoryJobQueue implements JobQueue {
       id,
       definition: job as unknown as JobDefinition<unknown>,
       payload,
+      tenantId: options.tenantId,
       priority: options.priority ?? 0,
       maxAttempts: options.maxAttempts ?? 1,
       backoffMs: options.backoffMs ?? exponentialBackoff(),
@@ -73,7 +76,9 @@ export class InMemoryJobQueue implements JobQueue {
     };
     state.pending.push(queued);
     observeEvent(state, { operation: "dispatch", id, name: job.name });
-    if (queued.deduplicationKey) state.deduplicated.set(`${job.name}:${queued.deduplicationKey}`, receipt);
+    if (queued.deduplicationKey) {
+      state.deduplicated.set(jobDeduplicationKey(job.name, queued.tenantId, queued.deduplicationKey), receipt);
+    }
     pumpQueue(state);
     return receipt;
   }
@@ -101,7 +106,9 @@ export class InMemoryJobQueue implements JobQueue {
       state.cancelled = true;
       for (const job of state.pending) {
         job.cancelled = true;
-        if (job.deduplicationKey) state.deduplicated.delete(`${job.definition.name}:${job.deduplicationKey}`);
+        if (job.deduplicationKey) {
+          state.deduplicated.delete(jobDeduplicationKey(job.definition.name, job.tenantId, job.deduplicationKey));
+        }
       }
       state.pending.length = 0;
       for (const job of state.runningJobs.values()) {

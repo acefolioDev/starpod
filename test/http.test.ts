@@ -26,6 +26,11 @@ describe("HTTP request identity", () => {
       .toBe("request-1");
   });
 
+  test("does not return an unsafe correlation fallback", () => {
+    expect(correlationIdFrom(new Headers(), "bad\ncorrelation"))
+      .toMatch(/^[A-Za-z0-9._:-]+$/);
+  });
+
   test("uses the peer address unless an explicit trusted proxy forwards a valid chain", () => {
     const request = new Request("http://localhost", {
       headers: { "x-forwarded-for": "203.0.113.10, 10.0.0.2" },
