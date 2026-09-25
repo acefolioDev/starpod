@@ -30,6 +30,7 @@ src/
 ```
 
 Every feature owns a folder. Controllers own their routes. Pods wire a controller to a URL prefix and its providers. Services contain application logic. Infrastructure is shared through `application({ providers })`.
+Feature folders may contain nested TypeScript modules such as `domain/`, `repositories/`, `policies/`, or `jobs/`; only the feature's controller and pod are required entrypoints. The architecture seal keeps feature files TypeScript-only without forcing every filename into one naming pattern.
 
 The framework kernel is organized by capability so each area can grow independently:
 
@@ -77,6 +78,8 @@ export class HelloController {
 }
 ```
 
+The controller contract also requires `routes(app)` to return the native Elysia instance at compile time; bootstrap checks the same boundary at runtime.
+
 Use `import { Elysia, t } from "elysia"` anywhere in your application. Starpod does not restrict Elysia imports or wrap its route API. `StarpodElysia` is optional and only adds typed Starpod request context such as `requestId`.
 
 ## Native HTTP capabilities
@@ -101,6 +104,7 @@ routes(app: StarpodElysia) {
 ```
 
 Use `app.ws(...)` for WebSockets and native Elysia response types for downloads or SSE. Starpod's request identity, DI, errors, observability, and shutdown boundaries remain available around those routes.
+Returning or throwing a native `Response` keeps its status, headers, body, and streaming lifecycle intact.
 
 For endpoints that serve more than one representation, use the small content-negotiation helper and keep the response itself native:
 
@@ -186,6 +190,25 @@ Starpod rejects singleton providers that depend on request-scoped providers, pre
 
 Inside a native controller route, `resolve(Token)` uses the request's real child container. Use `resolveAsync(Token)` when a request-scoped provider exposes asynchronous `initialize()` work; initialization follows dependency order and is retried after a failed attempt. Request-scoped instances and lifecycle-aware transient instances are disposed by their owning scope; request resources remain alive until native streams or iterators finish, while singleton instances remain owned by their application or feature container. Tests can override application or feature providers with a real child scope at bootstrap:
 
+Request-scoped services can receive native request data through ordinary constructor injection with `REQUEST_CONTEXT`; this is explicit DI, not ambient state:
+
+```ts
+import { REQUEST_CONTEXT, type StarpodRequestContext } from "starpod";
+
+class RequestAudit {
+  static readonly lifetime = "request" as const;
+  static readonly inject = [REQUEST_CONTEXT] as const;
+
+  constructor(private readonly context: StarpodRequestContext) {}
+
+  route() {
+    return this.context.route;
+  }
+}
+```
+
+The context contains the native `Request`, route template, request ID, correlation ID, and validated incoming W3C trace context.
+
 ```ts
 const server = await bootstrap(app, {
   overrides: [provideValue(DATABASE, fakeDatabase)],
@@ -202,6 +225,49 @@ export const app = application({
   providers: [Clock],
 });
 ```
+
+Use `uses` when a feature intentionally consumes an application-level provider:
+
+```ts
+export const users = pod({
+  name: "users",
+  prefix: "/users",
+  controller: UsersController,
+  uses: [DATABASE],
+  providers: [UsersService],
+});
+```
+
+`uses` documents and validates the dependency boundary; it does not register a second
+provider. The application-owned singleton is shared by the feature and disposed once.
+
+Feature-to-feature dependencies use the same explicit rule. Feature `users` can export
+its service, and feature `billing` can import the `users` feature:
+
+```ts
+export const users = pod({
+  name: "users",
+  prefix: "/users",
+  controller: UsersController,
+  providers: [UsersService],
+  exports: [UsersService],
+});
+
+export const billing = pod({
+  name: "billing",
+  prefix: "/billing",
+  controller: BillingController,
+  imports: [users],
+  providers: [BillingService],
+});
+
+export const app = application({ features: [users, billing] });
+```
+
+Only tokens listed in `exports` are visible to an importing feature. Imported providers
+are resolved from the original feature container, so singleton, request, and lifecycle
+ownership are shared rather than duplicated. Import cycles and undeclared imports fail
+during composition or the architecture seal.
 
 ## Plugins
 
@@ -239,6 +305,19 @@ starpod routes
 ```
 
 The same manifest is available programmatically through `routeManifest(server)` and includes native Elysia `detail` metadata when provided.
+
+Run the project audit before CI or deployment:
+
+```bash
+starpod audit --production --strict --json
+```
+
+The audit combines the architecture seal with project checks for module setup,
+environment handling, secret-file ignores, lockfiles, container files, unsafe
+watch-mode production starts, and missing non-root container users.
+Use `--strict` for a deployment or release gate: warnings become blocking findings.
+Without `--strict`, warnings remain visible but do not fail the command. `starpod doctor`
+remains available when only project diagnostics are needed.
 
 Export the same route contracts as OpenAPI from the CLI:
 
@@ -315,7 +394,7 @@ export const app = application({
 });
 ```
 
-Repositories still use the native client or query builder through `database.use(...)`; migration policy, models, locking, replicas, and SQL remain explicit application or driver concerns. Readiness checks can call `database.ping(signal)` without creating a second connection lifecycle. Pass `onEvent` to observe connection, transaction, and close timings through the same inspector or metrics adapter used elsewhere in the application.
+Repositories still use the native client or query builder through `database.use(...)`; migration policy, models, locking, replicas, and SQL remain explicit application or driver concerns. Readiness checks can call `database.ping(signal)` without creating a second connection lifecycle. Pass `onEvent` to observe connection, transaction, and close timings. Optional `tracer` and `metrics` adapters create isolated `db.*` operation spans and counters/histograms without coupling Starpod to a telemetry vendor.
 
 Migration ordering and journal persistence are also explicit:
 
@@ -458,6 +537,8 @@ const server = await bootstrap(app, {
 });
 ```
 
+Pass optional `tracer` and `metrics` adapters to `authentication(...)` to record a safe `security.authentication` operation. Principal values and credential material are never added to telemetry.
+
 Use `requireUser`, `requireRole`, and `requirePermission` close to business logic. Applications remain responsible for choosing and securely configuring their identity provider.
 
 For other identity inputs, use the explicit extractors and keep verification in the authenticator:
@@ -508,6 +589,7 @@ const server = await bootstrap(app, {
 ```
 
 The cookie contains only a random opaque session ID and defaults to `HttpOnly`, `Secure`, `SameSite=Lax`, and `Path=/`. Expired sessions are deleted and cleared. Starpod does not own session persistence, user lookup, OAuth, MFA, or token rotation policy.
+Optional `tracer` and `metrics` adapters on `sessions(...)` record `security.session` resolution without recording cookie values or session IDs.
 
 For resource-level rules, define an explicit policy next to the domain logic:
 
@@ -568,7 +650,7 @@ const payments = new HttpClient({
 const payment = await payments.json<Payment>(`/payments/${paymentId}`);
 ```
 
-`request()` preserves normal `fetch` behavior and returns non-2xx responses as `Response` objects. `json()` throws `HttpClientError` for non-2xx responses or invalid JSON. Retries default to `GET`, `HEAD`, and `OPTIONS`; writes are never retried unless `retryMethods` explicitly includes them. URLs in errors and telemetry omit credentials, query values, and fragments. Pass a `Tracer` adapter to create one safe `http.client` span per attempt. Register the client as a normal Starpod provider when it is shared by services.
+`request()` returns non-2xx responses as native `Response` objects. `json()` throws `HttpClientError` for non-2xx responses or invalid JSON. Retries default to `GET`, `HEAD`, and `OPTIONS`; writes are never retried unless `retryMethods` explicitly includes them. Redirects are blocked by default so an allowlisted client cannot silently leave its configured origin; pass native `redirect: "follow"` or `redirect: "manual"` per request when that behavior is an explicit application decision. URLs in errors and telemetry omit credentials, query values, and fragments. Pass a `Tracer` adapter to create one safe `http.client` span per attempt. Register the client as a normal Starpod provider when it is shared by services.
 
 When `baseUrl` is configured, requests are restricted to that origin by default. Use `allowedOrigins` for an explicit multi-service allowlist. This prevents accidental user-controlled absolute URLs from turning a service client into an SSRF primitive; network-level egress controls are still required for complete SSRF defense.
 
@@ -594,6 +676,7 @@ await events.emit("user.created", { userId: user.id });
 Handlers run in registration order. Delivery failures are aggregated instead of being silently swallowed.
 
 Pass `onEvent` to `EventBus` for value-free emit, handler, and completion telemetry. Observer failures are isolated from event delivery; payloads and handler errors are never included in the events.
+`EventBus` also accepts optional vendor-neutral `tracer` and `metrics` adapters and records an `events.emit` operation around ordered delivery.
 
 For broker or outbox delivery, register a versioned codec with `EventRegistry`. It produces a transport-safe envelope and rejects events without an explicit serialization contract:
 
@@ -611,6 +694,7 @@ const envelope = registry.encode("user.created", { userId: user.id });
 Distributed adapters still own delivery guarantees such as retries, ordering, consumer groups, and dead letters; the event contract remains shared and typed.
 
 `EventDispatcher` is the durable-transport bridge: it encodes through the registry and publishes an envelope, while the broker owns delivery, retries, consumer groups, and dead letters.
+It accepts optional `tracer` and `metrics` adapters and records an `events.dispatch` operation without adding payload data to telemetry.
 
 Events may carry an explicit `tenantId` through dispatch, outbox, and consumer delivery. Handlers receive it in the optional event context; Starpod does not install ambient tenant state, so consumers still choose the database and authorization boundary deliberately.
 
@@ -621,7 +705,7 @@ const consumer = new EventConsumer(registry, bus, { idempotency: deduplicationSt
 await consumer.consume(envelopeFromBroker);
 ```
 
-For local development and tests, `MemoryEventIdempotencyStore` coalesces concurrent deliveries, remembers successful IDs for a bounded TTL, and leaves failed work eligible for retry. Tenant-scoped event IDs are isolated automatically when the envelope carries `tenantId`. It is process-local; use a shared atomic store when consumers run on multiple instances.
+For local development and tests, `MemoryEventIdempotencyStore` coalesces concurrent deliveries, remembers successful IDs for a bounded TTL, and leaves failed work eligible for retry. Its completed and in-flight entries share a configurable capacity; when full, a new unique delivery fails closed. Tenant-scoped event IDs are isolated automatically when the envelope carries `tenantId`. It is process-local; use a shared atomic store when consumers run on multiple instances.
 
 For a transactional outbox, use `EventOutbox.enqueue(...)` inside the same database transaction as the domain write. Its `EventOutboxStore` must make `append` transactional and `claim` atomic; `publishPending()` publishes claimed records and marks broker failures for a later retry. If marking a successfully published record fails, the record may be delivered again, so consumers must be idempotent:
 
@@ -629,6 +713,8 @@ For a transactional outbox, use `EventOutbox.enqueue(...)` inside the same datab
 const record = await outbox.enqueue("user.created", { id: user.id }, { transaction });
 await outbox.publishPending(100);
 ```
+
+`EventOutbox` can also receive the optional vendor-neutral telemetry adapters. It records `events.outbox.enqueue` and `events.outbox.publish` operations; the store and broker remain responsible for transactional and delivery guarantees.
 
 ## Background jobs
 
@@ -657,6 +743,8 @@ The in-memory runner supports delays, priorities, retries, cooperative timeouts,
 Queues may expose cancel(id) for cooperative cancellation. A running handler must honor its JobContext signal; cancellation is treated as a control decision rather than a failed delivery. Long-running handlers can call `context.reportProgress({ completed, total })`; observers receive only bounded progress metadata, never the job payload.
 
 Pass onEvent to InMemoryJobQueue for value-free lifecycle telemetry: dispatch, start, success, retry, dead-letter, and cancel events. Observer failures are isolated from delivery.
+Optional `tracer` and `metrics` adapters add `jobs.queue.dispatch` and `jobs.queue.delivery` spans and counters/histograms for the in-process queue. Enqueue remains synchronous internally so deduplication timing and queue semantics are unchanged.
+`JobWorker` also accepts the optional vendor-neutral `tracer` and `metrics` adapters and creates a safe `jobs.worker` operation for each delivery.
 
 Job names are stable transport identities. A durable adapter should persist the job name, encoded payload, and delivery options—not the handler closure—and a worker should register the same definitions with `JobRegistry`:
 
@@ -696,6 +784,7 @@ const worker = new JobWorker(new JobRegistry(), {
 `JobWorker` scopes the delivery key by job name and `tenantId`, coalesces concurrent duplicates, and only remembers successful work. Failed or timed-out work remains eligible for broker retry. The memory store is process-local; use a shared atomic implementation when workers run on multiple instances.
 
 `InMemoryJobQueue` exposes `dispose()`, so registering it as an application singleton lets Starpod drain it during normal shutdown.
+Closing with `{ drain: false }` cancels pending work, aborts active handlers through `AbortSignal`, and still waits for those handlers to settle before returning. This prevents provider disposal from racing with cooperative job cleanup.
 
 For a durable broker, use `DurableJobDispatcher`. It requires a job codec and publishes only a transport-safe envelope; the worker registers the same job with `JobRegistry` and never receives a serialized handler closure:
 
@@ -712,7 +801,7 @@ await dispatcher.dispatch(sendWelcomeEmail, { userId: user.id }, {
 });
 ```
 
-The dispatcher also accepts `onEvent` for value-free dispatch telemetry. The broker adapter remains responsible for durability, visibility timeouts, acknowledgement, retries, consumer groups, and dead-letter storage.
+The dispatcher accepts `onEvent` for value-free dispatch telemetry and optional `tracer`/`metrics` adapters for a safe `jobs.dispatch` operation. The broker adapter remains responsible for durability, visibility timeouts, acknowledgement, retries, consumer groups, and dead-letter storage.
 
 Pass `tenantId` when dispatching tenant-owned work. It is validated, persisted in durable job options, and exposed as `context.tenantId` to both in-memory handlers and `JobWorker` deliveries. This is explicit metadata, not an automatic authorization decision; handlers must still enforce tenant access at their storage boundary.
 
@@ -727,6 +816,8 @@ const task = scheduler.schedule(refreshSearch, {}, {
 
 task.cancel();
 ```
+
+Optional `tracer` and `metrics` adapters record each scheduled execution as a safe `jobs.scheduler` operation. The scheduler remains fixed-delay and never overlaps its own executions.
 
 It prevents overlapping runs, reports dispatch failures through an explicit callback, emits safe schedule/start/success/failure/cancel events, and cleans up timers through `dispose()`. It is not a durable scheduler or a cron engine; use a deployment-specific scheduler adapter when jobs must survive restarts or coordinate across instances.
 
@@ -754,9 +845,10 @@ const user = await cache.getOrSet(`user:${userId}`, () => users.find(userId), {
 cache.invalidateTag(`user:${userId}`);
 ```
 
-The memory implementation supports TTLs, bounded LRU storage, namespaces, tags, and concurrent-loader coalescing. It is process-local. A distributed `CacheStore` implementation must provide the same `getOrSet` stampede-protection contract over Redis or another shared cache rather than silently falling back to an uncoordinated read-then-write sequence.
+The memory implementation supports TTLs, bounded LRU storage, namespaces, tags, and concurrent-loader coalescing. Completed entries and unique in-flight loaders share the configured capacity; a new miss fails closed when that bound is full. It is process-local. A distributed `CacheStore` implementation must provide the same `getOrSet` stampede-protection contract over Redis or another shared cache rather than silently falling back to an uncoordinated read-then-write sequence.
 
 Pass `onEvent` to `MemoryCache` for value-free cache telemetry. Events identify hits, misses, writes, deletes, tag invalidations, and loader coalescing; observer failures never change cache behavior.
+Optional `tracer` and `metrics` adapters add safe `cache.*` operation spans and counters/histograms; cache keys and values are never added to telemetry.
 
 For stampede protection or other cross-process critical sections, use the explicit `LockStore` boundary:
 
@@ -830,6 +922,22 @@ const server = await bootstrap(app, { inspector });
 console.log(inspector.snapshot());
 console.log(inspector.query({ requestId: "request-id", limit: 20 }));
 ```
+
+For a small native JSON view during local development, register the route
+explicitly and keep it out of production configuration:
+
+```ts
+import { inspectorRoutes } from "starpod";
+
+const server = await bootstrap(app, {
+  inspector,
+  configure: (elysia) => inspectorRoutes(elysia, { inspector }),
+});
+```
+
+The endpoint is bounded and supports request or correlation filters. It is not
+an authentication boundary; protect it or omit it when the application is
+reachable by untrusted clients.
 
 Conservative API security headers and a 10 MiB request-body limit are enabled by default. Override the limit explicitly for larger uploads; Elysia's server-level limit also protects requests without a declared Content-Length:
 
@@ -908,7 +1016,7 @@ const server = await bootstrap(app, {
 });
 ```
 
-The hook emits standard `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers plus `Retry-After` on rejected requests. Legacy `X-RateLimit-*` aliases are also emitted during the alpha period. A custom `RateLimitStore` must make `consume` atomic for its deployment, such as with Redis or another shared data store. Pass `onEvent` for value-free decision telemetry; identities and keys are never included.
+The hook emits standard `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers plus `Retry-After` on rejected requests. Legacy `X-RateLimit-*` aliases are also emitted during the alpha period. A custom `RateLimitStore` must make `consume` atomic for its deployment, such as with Redis or another shared data store. Pass `onEvent` for value-free decision telemetry, or `tracer`/`metrics` for a safe `security.rate_limit` operation; identities and keys are never included.
 
 When an application is behind a reverse proxy, resolve the address for an abuse-protection key with `clientIp(request, { peerAddress, trustProxy })`. Forwarded headers are ignored by default; only an explicitly trusted direct peer may contribute a validated `X-Forwarded-For` chain. The hosting adapter must provide the actual socket peer address—never treat an arbitrary request header as that value.
 
@@ -927,6 +1035,7 @@ const user = await loginGuard.run(`${email}:${ipAddress}`, () => authenticate(em
 ```
 
 The built-in store is bounded and process-local. When full, it preserves active lockouts and temporarily fails closed for new identities instead of evicting protection. A custom `BruteForceStore` must implement `recordFailure` atomically; use a shared implementation for multiple instances, and choose a privacy-preserving identity key appropriate to the endpoint. The guard does not replace account lockout policy, CAPTCHA, or identity-provider controls.
+Pass optional `tracer` and `metrics` adapters to record each `run()` call as a safe `security.brute_force` operation; the identity key is never included.
 
 For downloads or other temporary capabilities, sign an absolute URL with an application secret:
 
@@ -1003,6 +1112,7 @@ For a project-level architecture report, use the CLI audit command. It exits non
 ```bash
 bunx starpod audit
 bunx starpod audit --json
+bunx starpod audit --production --strict
 ```
 
 ## Production boundary

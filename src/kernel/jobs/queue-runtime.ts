@@ -1,13 +1,13 @@
 import type {
   DeadLetter,
-  JobContext,
   JobDefinition,
   JobEvent,
   JobObserver,
   JobReceipt,
 } from "./contracts";
 import { jobDeduplicationKey } from "./contracts";
-import { createJobContext } from "./context";
+import { observeOperation, type OperationTelemetry } from "../observability/operation";
+import { runWithTimeout } from "./queue-timeout";
 
 export type QueuedJob = {
   readonly id: string;
@@ -30,6 +30,7 @@ export type QueueRuntime = {
   readonly idFactory: () => string;
   readonly now: () => number;
   readonly onEvent: JobObserver | undefined;
+  readonly telemetry: OperationTelemetry;
   readonly pending: QueuedJob[];
   readonly deduplicated: Map<string, JobReceipt>;
   readonly dead: Map<string, DeadLetter>;
@@ -49,6 +50,7 @@ export function createQueueRuntime(
   idFactory: () => string,
   now: () => number,
   onEvent: JobObserver | undefined,
+  telemetry: OperationTelemetry,
 ): QueueRuntime {
   if (!Number.isInteger(concurrency) || concurrency < 1) {
     throw new Error("InMemoryJobQueue concurrency must be a positive integer");
@@ -58,6 +60,7 @@ export function createQueueRuntime(
     idFactory,
     now,
     onEvent,
+    telemetry,
     pending: [],
     deduplicated: new Map(),
     dead: new Map(),
@@ -94,9 +97,8 @@ export function cancelQueuedJob(state: QueueRuntime, id: string): boolean {
   observeEvent(state, { operation: "cancel", id: running.id, name: running.definition.name });
   return true;
 }
-
 export function pumpQueue(state: QueueRuntime) {
-  if (state.pumping || state.cancelled) return;
+  if (state.pumping || state.cancelled) { resolveIdleWaiters(state); return; }
   state.pumping = true;
   try {
     while (state.running < state.concurrency) {
@@ -135,7 +137,10 @@ async function executeJob(state: QueueRuntime, job: QueuedJob) {
   observeEvent(state, { operation: "start", id: job.id, name: job.definition.name, attempt: job.attempt });
   let completed = false;
   try {
-    await runWithTimeout(state, job, controller);
+    await observeOperation(state.telemetry, "jobs.queue.delivery", () => runWithTimeout(state, job, controller), {
+      "job.name": job.definition.name,
+      "job.attempt": job.attempt,
+    });
     completed = true;
     observeEvent(state, { operation: "success", id: job.id, name: job.definition.name, attempt: job.attempt });
   } catch (error) {
@@ -171,32 +176,6 @@ async function executeJob(state: QueueRuntime, job: QueuedJob) {
     if (job.cancelled || state.cancelled) clearDeduplication(state, job);
     state.running -= 1;
     pumpQueue(state);
-  }
-}
-
-async function runWithTimeout(state: QueueRuntime, job: QueuedJob, controller: AbortController) {
-  const context: JobContext = createJobContext({
-    id: job.id,
-    name: job.definition.name,
-    attempt: job.attempt,
-    signal: controller.signal,
-    tenantId: job.tenantId,
-    onEvent: state.onEvent,
-  });
-  const work = Promise.resolve(job.definition.handle(job.payload, context));
-  if (job.timeoutMs === undefined) return await work;
-
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await new Promise<void>((resolve, reject) => {
-      timer = setTimeout(() => {
-        controller.abort();
-        reject(new Error(`job timed out after ${job.timeoutMs}ms`));
-      }, job.timeoutMs);
-      work.then(resolve, reject);
-    });
-  } finally {
-    if (timer) clearTimeout(timer);
   }
 }
 

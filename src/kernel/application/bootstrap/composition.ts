@@ -1,6 +1,7 @@
 import type { AnyElysia } from "elysia";
-import { Container, providerLifetime, providerToken, type Provider } from "../../di/di";
-import type { Application } from "../feature";
+import { Container, GraphError, providerLifetime, providerToken, type Provider } from "../../di/di";
+import type { Application, Feature } from "../feature";
+import { featureImports, orderFeatureImports } from "../imports";
 
 export async function composeApplication(
   elysia: AnyElysia,
@@ -17,13 +18,20 @@ export async function composeApplication(
       await compositionRoot.resolveAsync(providerToken(provider));
     }
   }
-  for (const feature of app.features) {
+  const orderedFeatures = orderFeatureImports(app.features);
+  const containers = new Map<Feature, Container>();
+  for (const feature of orderedFeatures) {
+    const imports = featureImports(feature, containers);
     const container = compositionRoot.scope([
-      ...feature.uses,
       ...feature.providers,
       feature.controller,
-    ].filter((provider) => !overrideTokens.has(providerToken(provider))));
+    ].filter((provider) => !overrideTokens.has(providerToken(provider))), imports);
+    containers.set(feature, container);
     featureScopes.push(container);
+  }
+  for (const feature of app.features) {
+    const container = containers.get(feature);
+    if (!container) throw new GraphError(`${feature.name}: feature container was not created`);
     const controller = await container.resolveAsync(feature.controller);
     featureScopesByPrefix.push({ prefix: feature.prefix, container });
     elysia.group(feature.prefix === "/" ? "" : feature.prefix, (group) => {

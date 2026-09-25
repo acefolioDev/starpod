@@ -1,5 +1,6 @@
 import type { AnyElysia } from "elysia";
 import { TooManyRequests } from "../errors/errors";
+import { observeOperation, type OperationTelemetry } from "../observability/operation";
 
 export type RateLimitDecision = {
   readonly allowed: boolean;
@@ -27,7 +28,7 @@ export type RateLimitEvent = {
   readonly resetAt: number;
 };
 
-export type RateLimitOptions = {
+export type RateLimitOptions = OperationTelemetry & {
   readonly limit: number;
   readonly windowMs: number;
   readonly now?: () => number;
@@ -112,30 +113,32 @@ export function rateLimit(options: RateLimitOptions) {
     if (!identity || identity.trim() === "") throw new Error("rateLimit key must return a non-empty string");
     if (identity.length > 512) throw new Error("rateLimit key must be at most 512 characters");
 
-    const decision = await store.consume(rateLimitKey(name, identity), options.limit, options.windowMs);
-    validateDecision(decision);
-    observe(options.onEvent, {
-      operation: "decision",
-      name,
-      allowed: decision.allowed,
-      limit: decision.limit,
-      remaining: decision.remaining,
-      resetAt: decision.resetAt,
-    });
-    const resetInSeconds = Math.max(0, Math.ceil((decision.resetAt - now()) / 1000));
-    set.headers["ratelimit-limit"] = String(decision.limit);
-    set.headers["ratelimit-remaining"] = String(decision.remaining);
-    set.headers["ratelimit-reset"] = String(resetInSeconds);
-    // Keep the widely used legacy names during the alpha period.
-    set.headers["x-ratelimit-limit"] = String(decision.limit);
-    set.headers["x-ratelimit-remaining"] = String(decision.remaining);
-    set.headers["x-ratelimit-reset"] = String(Math.ceil(decision.resetAt / 1000));
+    return observeOperation(options, "security.rate_limit", async () => {
+      const decision = await store.consume(rateLimitKey(name, identity), options.limit, options.windowMs);
+      validateDecision(decision);
+      observe(options.onEvent, {
+        operation: "decision",
+        name,
+        allowed: decision.allowed,
+        limit: decision.limit,
+        remaining: decision.remaining,
+        resetAt: decision.resetAt,
+      });
+      const resetInSeconds = Math.max(0, Math.ceil((decision.resetAt - now()) / 1000));
+      set.headers["ratelimit-limit"] = String(decision.limit);
+      set.headers["ratelimit-remaining"] = String(decision.remaining);
+      set.headers["ratelimit-reset"] = String(resetInSeconds);
+      // Keep the widely used legacy names during the alpha period.
+      set.headers["x-ratelimit-limit"] = String(decision.limit);
+      set.headers["x-ratelimit-remaining"] = String(decision.remaining);
+      set.headers["x-ratelimit-reset"] = String(Math.ceil(decision.resetAt / 1000));
 
-    if (!decision.allowed) {
-      const retryAfter = Math.max(1, Math.ceil((decision.resetAt - now()) / 1000));
-      set.headers["retry-after"] = String(retryAfter);
-      throw TooManyRequests();
-    }
+      if (!decision.allowed) {
+        const retryAfter = Math.max(1, Math.ceil((decision.resetAt - now()) / 1000));
+        set.headers["retry-after"] = String(retryAfter);
+        throw TooManyRequests();
+      }
+    }, { "rate_limit.name": name });
   }) as AnyElysia;
 }
 

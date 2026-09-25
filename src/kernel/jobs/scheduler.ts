@@ -1,4 +1,5 @@
 import type { JobDefinition, JobOptions, JobQueue } from "./contracts";
+import { observeOperation, type OperationTelemetry } from "../observability/operation";
 
 export type ScheduleOptions = {
   readonly intervalMs: number;
@@ -12,7 +13,7 @@ export type ScheduledTask = {
   readonly active: () => boolean;
 };
 
-export type InMemorySchedulerOptions = {
+export type InMemorySchedulerOptions = OperationTelemetry & {
   readonly onError?: (error: unknown) => void | Promise<void>;
   readonly onEvent?: (event: SchedulerEvent) => void;
   readonly now?: () => number;
@@ -28,6 +29,7 @@ export class InMemoryScheduler {
   private readonly onError: ((error: unknown) => void | Promise<void>) | undefined;
   private readonly onEvent: ((event: SchedulerEvent) => void) | undefined;
   private readonly now: () => number;
+  private readonly telemetry: OperationTelemetry;
   private disposed = false;
 
   constructor(
@@ -37,6 +39,7 @@ export class InMemoryScheduler {
     this.onError = options.onError;
     this.onEvent = options.onEvent;
     this.now = options.now ?? (() => performance.now());
+    this.telemetry = options;
   }
 
   schedule<TPayload>(
@@ -80,6 +83,7 @@ export class InMemoryScheduler {
       () => this.tasks.delete(task),
       (event) => this.observe(event),
       () => this.now(),
+      this.telemetry,
     );
     this.tasks.add(task);
     this.observe({ operation: "schedule", name: job.name });
@@ -118,6 +122,7 @@ class InMemoryScheduledTask implements ScheduledTask {
     private readonly onComplete: () => void,
     private readonly onEvent: (event: SchedulerEvent) => void,
     private readonly now: () => number,
+    private readonly telemetry: OperationTelemetry,
   ) {}
 
   start() {
@@ -148,7 +153,9 @@ class InMemoryScheduledTask implements ScheduledTask {
     this.onEvent({ operation: "start", name: this.name });
     this.running = (async () => {
       try {
-        await this.run();
+        await observeOperation(this.telemetry, "jobs.scheduler", () => this.run(), {
+          "job.name": this.name,
+        });
         this.onEvent({ operation: "success", name: this.name, durationMs: this.duration(startedAt) });
       } catch (error) {
         this.onEvent({ operation: "failure", name: this.name, durationMs: this.duration(startedAt) });

@@ -3,6 +3,7 @@ import type Elysia from "elysia";
 import { Unauthorized } from "../errors/errors";
 import { cookieValue } from "./auth";
 import type { StarpodSingleton } from "../http/http";
+import { observeOperation, type OperationTelemetry } from "../observability/operation";
 
 export type Session = {
   readonly id: string;
@@ -25,7 +26,7 @@ export type SessionCookieOptions = {
   readonly maxAgeSeconds?: number;
 };
 
-export type SessionsOptions<TSession extends Session> = {
+export type SessionsOptions<TSession extends Session> = OperationTelemetry & {
   readonly store: SessionStore<TSession>;
   readonly cookie?: SessionCookieOptions;
   readonly required?: boolean;
@@ -90,18 +91,20 @@ export function sessions<TSession extends Session>(
   const cookie = normalizeCookieOptions(options.cookie);
   const now = options.now ?? Date.now;
   return (app) => app.resolve({ as: "global" }, async ({ request, set }) => {
-    const id = cookieValue(request, cookie.name);
-    const validId = id !== undefined && SESSION_ID_PATTERN.test(id);
-    const session = validId ? await options.store.get(id) : null;
-    if (session && session.id === id && SESSION_ID_PATTERN.test(session.id) &&
-      Number.isFinite(session.expiresAt) && session.expiresAt > now()) {
-      return { session };
-    }
+    return observeOperation(options, "security.session", async () => {
+      const id = cookieValue(request, cookie.name);
+      const validId = id !== undefined && SESSION_ID_PATTERN.test(id);
+      const session = validId ? await options.store.get(id) : null;
+      if (session && session.id === id && SESSION_ID_PATTERN.test(session.id) &&
+        Number.isFinite(session.expiresAt) && session.expiresAt > now()) {
+        return { session };
+      }
 
-    if (validId && options.store.delete) await options.store.delete(id);
-    if (id) clearSessionCookie(set.headers, cookie);
-    if (options.required) throw Unauthorized("A valid session is required");
-    return { session: null };
+      if (validId && options.store.delete) await options.store.delete(id);
+      if (id) clearSessionCookie(set.headers, cookie);
+      if (options.required) throw Unauthorized("A valid session is required");
+      return { session: null };
+    });
   }) as AnyElysia;
 }
 

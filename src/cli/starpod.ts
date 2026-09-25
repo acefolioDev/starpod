@@ -2,6 +2,7 @@
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { auditArchitecture, sealArchitecture } from "../kernel/application/architecture";
+import { auditProject } from "../kernel/diagnostics/audit";
 import { bootstrap, disposeBootstrap } from "../kernel/application/bootstrap";
 import { doctor } from "../kernel/diagnostics/doctor";
 import { openApiDocument } from "../kernel/http/openapi";
@@ -35,18 +36,15 @@ async function run(value: string) {
       return;
     }
     case "audit": {
-      const report = await auditArchitecture(await loadApp());
+      const report = await auditProject({
+        app: await loadApp(),
+        environment: process.argv.includes("--production") ? "production" : undefined,
+        strict: process.argv.includes("--strict"),
+      });
       if (process.argv.includes("--json")) {
         console.log(JSON.stringify(report, null, 2));
-      } else if (report.ok) {
-        const label = report.features.length === 1 ? "feature" : "features";
-        console.log("\n  ✓  architecture audit passed (" + report.features.length + " " + label + ")\n");
       } else {
-        const label = report.violations.length === 1 ? "violation" : "violations";
-        console.log(
-          "\n  ✕  architecture audit found " + report.violations.length + " " + label +
-          "\n" + report.violations.map((violation) => "  - " + violation).join("\n") + "\n",
-        );
+        printAudit(report);
       }
       if (!report.ok) process.exitCode = 1;
       return;
@@ -58,6 +56,7 @@ async function run(value: string) {
         root: process.cwd(),
         app,
         environment: process.argv.includes("--production") ? "production" : undefined,
+        strict: process.argv.includes("--strict"),
       });
       if (process.argv.includes("--json")) {
         console.log(JSON.stringify(report, null, 2));
@@ -168,8 +167,8 @@ function usage() {
     "Commands:",
     "  starpod init       Create the starter application structure",
     "  starpod seal       Validate architecture and the DI graph",
-    "  starpod audit      Report architecture findings (add --json for CI)",
-    "  starpod doctor     Check project setup and production hazards (add --production)",
+    "  starpod audit      Check architecture and project risks (add --production, --strict, or --json)",
+    "  starpod doctor     Check project setup and production hazards (add --production or --strict)",
     "  starpod dev        Run src/main.ts with Bun watch mode",
     "  starpod start      Run src/main.ts",
     "  starpod test       Run the project's test script",
@@ -181,4 +180,20 @@ function usage() {
     "  starpod openapi    Print an OpenAPI document as JSON",
     "  starpod help       Show this help",
   ].join("\n");
+}
+
+function printAudit(report: Awaited<ReturnType<typeof auditProject>>) {
+  if (report.architecture.ok) {
+    const label = report.architecture.features.length === 1 ? "feature" : "features";
+    console.log("\n  ✓  architecture passed (" + report.architecture.features.length + " " + label + ")");
+  } else {
+    console.log("\n  ✕  architecture violations");
+    for (const violation of report.architecture.violations) console.log("  - " + violation);
+  }
+
+  for (const finding of report.doctor.findings) {
+    const symbol = finding.severity === "error" ? "✕" : finding.severity === "warning" ? "!" : "·";
+    console.log(`  ${symbol}  [${finding.code}] ${finding.message}`);
+  }
+  console.log(report.ok ? "\n  ✓  project audit passed\n" : "\n  ✕  project audit found issues\n");
 }

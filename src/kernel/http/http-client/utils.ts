@@ -150,7 +150,11 @@ export async function fetchAttempt(
       traceContext: _traceContext,
       ...requestInit
     } = options;
-    return await fetchImplementation(url, { ...requestInit, signal: controller.signal });
+    return await fetchImplementation(url, {
+      ...requestInit,
+      redirect: requestInit.redirect ?? "error",
+      signal: controller.signal,
+    });
   } catch (error) {
     const code: HttpClientErrorCode = timedOut
       ? "TIMEOUT"

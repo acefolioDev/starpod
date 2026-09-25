@@ -2,6 +2,7 @@ import type { AnyElysia } from "elysia";
 import type Elysia from "elysia";
 import { Forbidden, Unauthorized } from "../errors/errors";
 import type { StarpodSingleton } from "../http/http";
+import { observeOperation, type OperationTelemetry } from "../observability/operation";
 
 export type Principal = {
   readonly id: string;
@@ -11,7 +12,7 @@ export type Principal = {
 
 export type Authenticator<TPrincipal> = (request: Request) => TPrincipal | null | Promise<TPrincipal | null>;
 
-export type AuthenticationOptions = {
+export type AuthenticationOptions = OperationTelemetry & {
   readonly required?: boolean;
 };
 
@@ -76,7 +77,7 @@ export function authentication<TPrincipal>(
   options: AuthenticationOptions = {},
 ): (app: AnyElysia) => AnyElysia {
   return (app) => app.resolve({ as: "global" }, async ({ request }) => {
-    const user = await authenticate(request);
+    const user = await observeOperation(options, "security.authentication", () => authenticate(request));
     if (options.required && (user === null || user === undefined)) throw Unauthorized();
     return { user };
   }) as AnyElysia;

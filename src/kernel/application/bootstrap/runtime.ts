@@ -10,6 +10,9 @@ import { createBootstrapElysia } from "./hooks";
 import { composeApplication } from "./composition";
 import { applyPlugins } from "../plugins";
 import { printFeatures } from "../print";
+import { provideValue } from "../../di/di";
+import { requestIdFrom, correlationIdFrom, REQUEST_CONTEXT } from "../../http/http";
+import { traceContextFrom } from "../../observability/observability";
 import {
   disposeRequestScope,
   disposeScopes,
@@ -60,7 +63,15 @@ export async function bootstrap(app: Application, options: BootstrapOptions = {}
     const parent = parentForRequest(route, featureScopesByPrefix, root);
     let requestContainer = requestScopes.get(request);
     if (!requestContainer) {
-      requestContainer = parent.requestScope();
+      const requestId = requestIds.get(request) ?? requestIdFrom(request.headers);
+      const correlationId = correlationIds.get(request) ?? correlationIdFrom(request.headers, requestId);
+      requestContainer = parent.requestScope([provideValue(REQUEST_CONTEXT, Object.freeze({
+        request,
+        route,
+        requestId,
+        correlationId,
+        traceContext: traceContextFrom(request.headers),
+      }))]);
       requestScopes.set(request, requestContainer);
       activeRequestScopes.add(requestContainer);
     }

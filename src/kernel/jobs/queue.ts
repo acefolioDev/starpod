@@ -20,8 +20,9 @@ import {
   type QueueRuntime,
   type QueuedJob,
 } from "./queue-runtime";
+import { observeSyncOperation, type OperationTelemetry } from "../observability/operation";
 
-export type InMemoryJobQueueOptions = {
+export type InMemoryJobQueueOptions = OperationTelemetry & {
   readonly concurrency?: number;
   readonly idFactory?: () => string;
   readonly now?: () => number;
@@ -39,10 +40,17 @@ export class InMemoryJobQueue implements JobQueue {
       options.idFactory ?? (() => crypto.randomUUID()),
       options.now ?? Date.now,
       options.onEvent,
+      options,
     );
   }
 
   async dispatch<TPayload>(job: JobDefinition<TPayload>, payload: TPayload, options: JobOptions = {}) {
+    return observeSyncOperation(this.state.telemetry, "jobs.queue.dispatch", () => this.dispatchJob(job, payload, options), {
+      "job.name": job.name,
+    });
+  }
+
+  private dispatchJob<TPayload>(job: JobDefinition<TPayload>, payload: TPayload, options: JobOptions) {
     const state = this.state;
     if (!state.accepting) throw new Error("job queue has already been closed");
     validateJob(job, options);
@@ -117,6 +125,7 @@ export class InMemoryJobQueue implements JobQueue {
       }
       clearTimer(state);
       resolveIdleWaiters(state);
+      await this.awaitIdle();
     })();
     return this.closing;
   }

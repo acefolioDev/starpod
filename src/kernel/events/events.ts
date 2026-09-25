@@ -1,6 +1,10 @@
 import { assertJsonValue, type JsonValue } from "../serialization/wire";
 import { validateTenantId } from "../security/tenant-id";
 import { eventIdempotencyKey } from "./idempotency";
+import { observeOperation, type OperationTelemetry } from "../observability/operation";
+import type { EventBus } from "./bus";
+export { EventBus } from "./bus";
+export type { EventBusOptions } from "./bus";
 export type EventMap = Record<string, unknown>;
 
 export type EventContext = {
@@ -19,10 +23,6 @@ export type EventBusEvent =
   | { readonly operation: "complete"; readonly name: string; readonly handlers: number; readonly failures: number };
 
 export type EventBusObserver = (event: EventBusEvent) => void;
-
-export type EventBusOptions = {
-  readonly onEvent?: EventBusObserver;
-};
 
 export type EventCodec<TPayload> = {
   readonly version?: string;
@@ -51,6 +51,8 @@ export type EventSubscription = {
 export type EventEnvelopePublisher = {
   publish(envelope: EventEnvelope): Promise<void>;
 };
+
+export type EventDispatcherOptions = OperationTelemetry;
 
 /** Typed event codecs and envelopes for a broker or persisted event transport. */
 export class EventRegistry<TEvents extends EventMap> {
@@ -117,6 +119,7 @@ export class EventDispatcher<TEvents extends EventMap> {
   constructor(
     private readonly registry: EventRegistry<TEvents>,
     private readonly publisher: EventEnvelopePublisher,
+    private readonly options: EventDispatcherOptions = {},
   ) {}
 
   async emit<TKey extends keyof TEvents & string>(
@@ -124,12 +127,15 @@ export class EventDispatcher<TEvents extends EventMap> {
     payload: TEvents[TKey],
     options: { readonly tenantId?: string } = {},
   ) {
-    if (options.tenantId !== undefined) validateTenantId(options.tenantId);
-    const envelope = this.registry.encode(name, payload);
-    await this.publisher.publish(Object.freeze({
-      ...envelope,
-      ...(options.tenantId === undefined ? {} : { tenantId: options.tenantId }),
-    }));
+    validateEventName(name);
+    return observeOperation(this.options, "events.dispatch", async () => {
+      if (options.tenantId !== undefined) validateTenantId(options.tenantId);
+      const envelope = this.registry.encode(name, payload);
+      await this.publisher.publish(Object.freeze({
+        ...envelope,
+        ...(options.tenantId === undefined ? {} : { tenantId: options.tenantId }),
+      }));
+    }, { "event.name": String(name) });
   }
 }
 
@@ -183,68 +189,5 @@ function validateEventVersion(version: string | undefined) {
 function validateEventId(id: string) {
   if (!id || id.length > 256 || /[\r\n]/.test(id)) {
     throw new Error("event id must be a non-empty single-line string of at most 256 characters");
-  }
-}
-
-export class EventBus<TEvents extends EventMap> {
-  private readonly handlers = new Map<keyof TEvents, Set<EventHandler<unknown>>>();
-  private readonly onEvent: EventBusObserver | undefined;
-
-  constructor(options: EventBusOptions = {}) {
-    this.onEvent = options.onEvent;
-  }
-
-  on<TKey extends keyof TEvents & string>(
-    name: TKey,
-    handler: EventHandler<TEvents[TKey]>,
-  ): EventSubscription {
-    const handlers = this.handlers.get(name) ?? new Set<EventHandler<unknown>>();
-    handlers.add(handler as EventHandler<unknown>);
-    this.handlers.set(name, handlers);
-
-    return {
-      unsubscribe: () => {
-        handlers.delete(handler as EventHandler<unknown>);
-        if (handlers.size === 0) this.handlers.delete(name);
-      },
-    };
-  }
-
-  async emit<TKey extends keyof TEvents & string>(
-    name: TKey,
-    payload: TEvents[TKey],
-    context?: EventContext,
-  ) {
-    const handlers = [...(this.handlers.get(name) ?? [])];
-    const failures: unknown[] = [];
-    this.observe({ operation: "emit", name, handlers: handlers.length });
-
-    for (const [handlerIndex, handler] of handlers.entries()) {
-      try {
-        await handler(payload, context);
-        this.observe({ operation: "handler-success", name, handlerIndex });
-      } catch (error) {
-        failures.push(error);
-        this.observe({ operation: "handler-failure", name, handlerIndex });
-      }
-    }
-
-    this.observe({ operation: "complete", name, handlers: handlers.length, failures: failures.length });
-
-    if (failures.length > 0) {
-      throw new AggregateError(failures, `event delivery failed: ${name}`);
-    }
-  }
-
-  clear() {
-    this.handlers.clear();
-  }
-
-  private observe(event: EventBusEvent) {
-    try {
-      this.onEvent?.(event);
-    } catch {
-      // Event telemetry must not alter delivery semantics.
-    }
   }
 }

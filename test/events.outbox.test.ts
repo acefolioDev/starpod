@@ -85,4 +85,5 @@ describe("EventOutbox", () => {
     expect(store.failed).toEqual([{ id: "outbox-1", nextAttemptAt: 1250 }]);
     expect(published).toHaveLength(2);
   });
+
 });

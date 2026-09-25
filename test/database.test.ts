@@ -135,4 +135,36 @@ describe("DatabaseConnection", () => {
       "close:success",
     ]);
   });
+
+  test("creates safe operation spans and metrics without affecting work", async () => {
+    const spans: string[] = [];
+    const metrics: string[] = [];
+    const database = new DatabaseConnection({
+      connect: () => ({ id: "client" }),
+      close: () => undefined,
+      transaction: (_client, work) => work({ id: "transaction" }),
+    }, {
+      tracer: {
+        startSpan(name) {
+          spans.push(name);
+          return {
+            setAttribute() {},
+            recordException() {},
+            setStatus() {},
+            end() {},
+          };
+        },
+      },
+      metrics: {
+        increment(name, _value, labels) { metrics.push(`${name}:${labels?.outcome}`); },
+        observe() {},
+      },
+    });
+
+    expect(await database.transaction((transaction) => transaction.id)).toBe("transaction");
+    await database.dispose();
+
+    expect(spans).toEqual(["db.transaction", "db.connect", "db.close"]);
+    expect(metrics).toContain("db.transaction.operations:success");
+  });
 });

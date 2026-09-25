@@ -124,6 +124,20 @@ describe("MemoryCache", () => {
     expect(loads).toBe(1);
   });
 
+  test("bounds unique in-flight loaders", async () => {
+    const cache = new MemoryCache({ maxEntries: 1 });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const first = cache.getOrSet("first", async () => {
+      await gate;
+      return "loaded";
+    });
+
+    await expect(cache.getOrSet("second", async () => "never")).rejects.toThrow("capacity");
+    release();
+    await first;
+  });
+
   test("keeps getOrSet coalescing and tags inside a namespace", async () => {
     const cache = new MemoryCache();
     const namespaced = cache.namespace("users");

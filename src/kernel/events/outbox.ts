@@ -1,5 +1,6 @@
 import type { EventEnvelope, EventEnvelopePublisher, EventMap, EventRegistry } from "./events";
 import { validateTenantId } from "../security/tenant-id";
+import { observeOperation, type OperationTelemetry } from "../observability/operation";
 
 export type OutboxRecord = {
   readonly id: string;
@@ -21,7 +22,7 @@ export type EventOutboxStore<TTransaction = unknown> = {
 export type EventOutboxEvent =
   | { readonly operation: "enqueue" | "published" | "failed"; readonly id: string; readonly name: string; readonly attempt?: number };
 
-export type EventOutboxOptions = {
+export type EventOutboxOptions = OperationTelemetry & {
   readonly idFactory?: () => string;
   readonly now?: () => number;
   readonly retryDelayMs?: (attempt: number) => number;
@@ -56,47 +57,51 @@ export class EventOutbox<TEvents extends EventMap, TTransaction = unknown> {
     payload: TEvents[TKey],
     options: { readonly transaction?: TTransaction; readonly tenantId?: string } = {},
   ): Promise<OutboxRecord> {
-    if (options.tenantId !== undefined) validateTenantId(options.tenantId);
-    const id = validateId(this.idFactory());
-    const envelope = Object.freeze({
-      ...this.registry.encode(name, payload),
-      id,
-      ...(options.tenantId === undefined ? {} : { tenantId: options.tenantId }),
-    });
-    const record = Object.freeze({
-      id,
-      envelope,
-      createdAt: this.now(),
-      attempts: 0,
-    });
-    await this.store.append(record, options.transaction);
-    this.observe({ operation: "enqueue", id: record.id, name });
-    return record;
+    return observeOperation(this.options, "events.outbox.enqueue", async () => {
+      if (options.tenantId !== undefined) validateTenantId(options.tenantId);
+      const id = validateId(this.idFactory());
+      const envelope = Object.freeze({
+        ...this.registry.encode(name, payload),
+        id,
+        ...(options.tenantId === undefined ? {} : { tenantId: options.tenantId }),
+      });
+      const record = Object.freeze({
+        id,
+        envelope,
+        createdAt: this.now(),
+        attempts: 0,
+      });
+      await this.store.append(record, options.transaction);
+      this.observe({ operation: "enqueue", id: record.id, name });
+      return record;
+    }, { "event.name": String(name) });
   }
 
   async publishPending(limit = 100): Promise<OutboxPublishReport> {
-    if (!Number.isInteger(limit) || limit < 1) throw new Error("outbox limit must be a positive integer");
-    const records = await this.store.claim(limit, this.now());
-    let published = 0;
-    let failed = 0;
-    for (const record of records) {
-      try {
-        await this.publisher.publish(record.envelope);
-      } catch (error) {
-        const delay = this.retryDelay(record.attempts + 1);
-        if (!Number.isFinite(delay) || delay < 0) throw new Error("outbox retry delay must be finite and non-negative", { cause: error });
-        await this.store.markFailed(record.id, this.now() + delay);
-        failed += 1;
-        this.observe({ operation: "failed", id: record.id, name: record.envelope.name, attempt: record.attempts });
-        continue;
+    return observeOperation(this.options, "events.outbox.publish", async () => {
+      if (!Number.isInteger(limit) || limit < 1) throw new Error("outbox limit must be a positive integer");
+      const records = await this.store.claim(limit, this.now());
+      let published = 0;
+      let failed = 0;
+      for (const record of records) {
+        try {
+          await this.publisher.publish(record.envelope);
+        } catch (error) {
+          const delay = this.retryDelay(record.attempts + 1);
+          if (!Number.isFinite(delay) || delay < 0) throw new Error("outbox retry delay must be finite and non-negative", { cause: error });
+          await this.store.markFailed(record.id, this.now() + delay);
+          failed += 1;
+          this.observe({ operation: "failed", id: record.id, name: record.envelope.name, attempt: record.attempts });
+          continue;
+        }
+        // If acknowledgement fails after publish, do not mark the event failed:
+        // the store's lease recovery may deliver it again and the consumer must be idempotent.
+        await this.store.markPublished(record.id, this.now());
+        published += 1;
+        this.observe({ operation: "published", id: record.id, name: record.envelope.name, attempt: record.attempts });
       }
-      // If acknowledgement fails after publish, do not mark the event failed:
-      // the store's lease recovery may deliver it again and the consumer must be idempotent.
-      await this.store.markPublished(record.id, this.now());
-      published += 1;
-      this.observe({ operation: "published", id: record.id, name: record.envelope.name, attempt: record.attempts });
-    }
-    return Object.freeze({ claimed: records.length, published, failed });
+      return Object.freeze({ claimed: records.length, published, failed });
+    });
   }
 
   private retryDelay(attempt: number) {

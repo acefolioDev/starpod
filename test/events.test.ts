@@ -132,6 +132,7 @@ describe("EventDispatcher", () => {
       payload: { userId: "user-1" },
     }]);
   });
+
 });
 
 describe("EventConsumer", () => {

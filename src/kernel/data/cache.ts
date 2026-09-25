@@ -1,3 +1,5 @@
+import { observeOperation, observeSyncOperation, type OperationTelemetry } from "../observability/operation";
+
 export type CacheSetOptions = {
   readonly ttlMs?: number;
   readonly tags?: readonly string[];
@@ -21,7 +23,7 @@ export type CacheStore = {
   invalidateTag(tag: string): number | Promise<number>;
 };
 
-export type MemoryCacheOptions = {
+export type MemoryCacheOptions = OperationTelemetry & {
   readonly maxEntries?: number;
   readonly now?: () => number;
   readonly onEvent?: CacheObserver;
@@ -44,62 +46,76 @@ export class MemoryCache implements CacheStore {
   private readonly maxEntries: number;
   private readonly now: () => number;
   private readonly onEvent: CacheObserver | undefined;
+  private readonly telemetry: OperationTelemetry;
 
   constructor(options: MemoryCacheOptions = {}) {
     this.maxEntries = options.maxEntries ?? 10_000;
     this.now = options.now ?? (() => Date.now());
     this.onEvent = options.onEvent;
+    this.telemetry = options;
     if (!Number.isInteger(this.maxEntries) || this.maxEntries < 1) {
       throw new Error("MemoryCache maxEntries must be a positive integer");
     }
   }
 
   get<T>(key: string): T | undefined {
-    const result = this.read<T>(key);
-    this.observe({ operation: "get", key, hit: result.hit });
-    return result.hit ? result.value : undefined;
+    return observeSyncOperation(this.telemetry, "cache.get", () => {
+      const result = this.read<T>(key);
+      this.observe({ operation: "get", key, hit: result.hit });
+      return result.hit ? result.value : undefined;
+    }, { "cache.operation": "get" });
   }
 
   set<T>(key: string, value: T, options: CacheSetOptions = {}) {
-    validateKey(key);
-    const tags = validateSetOptions(options);
-    this.removeEntry(key);
-
-    while (this.entries.size >= this.maxEntries) {
-      const oldest = this.entries.keys().next().value;
-      if (oldest === undefined) break;
-      this.delete(oldest);
-    }
-
-    this.entries.set(key, {
-      value,
-      expiresAt: options.ttlMs === undefined ? undefined : this.now() + options.ttlMs,
-      tags,
-    });
-    for (const tag of tags) {
-      const keys = this.tagKeys.get(tag) ?? new Set<string>();
-      keys.add(key);
-      this.tagKeys.set(tag, keys);
-    }
-    this.observe({ operation: "set", key });
+    return observeSyncOperation(this.telemetry, "cache.set", () => {
+      validateKey(key);
+      const tags = validateSetOptions(options);
+      this.removeEntry(key);
+      while (this.entries.size >= this.maxEntries) {
+        const oldest = this.entries.keys().next().value;
+        if (oldest === undefined) break;
+        this.delete(oldest);
+      }
+      this.entries.set(key, {
+        value,
+        expiresAt: options.ttlMs === undefined ? undefined : this.now() + options.ttlMs,
+        tags,
+      });
+      for (const tag of tags) {
+        const keys = this.tagKeys.get(tag) ?? new Set<string>();
+        keys.add(key);
+        this.tagKeys.set(tag, keys);
+      }
+      this.observe({ operation: "set", key });
+    }, { "cache.operation": "set" });
   }
 
   delete(key: string) {
-    validateKey(key);
-    const removed = this.removeEntry(key);
-    this.observe({ operation: "delete", key, removed });
-    return removed;
+    return observeSyncOperation(this.telemetry, "cache.delete", () => {
+      validateKey(key);
+      const removed = this.removeEntry(key);
+      this.observe({ operation: "delete", key, removed });
+      return removed;
+    }, { "cache.operation": "delete" });
   }
 
   invalidateTag(tag: string) {
-    validateKey(tag, "cache tag");
-    const keys = [...(this.tagKeys.get(tag) ?? [])];
-    for (const key of keys) this.delete(key);
-    this.observe({ operation: "invalidateTag", tag, removed: keys.length });
-    return keys.length;
+    return observeSyncOperation(this.telemetry, "cache.invalidate_tag", () => {
+      validateKey(tag, "cache tag");
+      const keys = [...(this.tagKeys.get(tag) ?? [])];
+      for (const key of keys) this.delete(key);
+      this.observe({ operation: "invalidateTag", tag, removed: keys.length });
+      return keys.length;
+    }, { "cache.operation": "invalidate_tag" });
   }
 
   async getOrSet<T>(key: string, loader: () => T | Promise<T>, options: CacheSetOptions = {}) {
+    return observeOperation(this.telemetry, "cache.get_or_set", () => this.getOrSetValue(key, loader, options), {
+      "cache.operation": "get_or_set",
+    });
+  }
+
+  private async getOrSetValue<T>(key: string, loader: () => T | Promise<T>, options: CacheSetOptions) {
     validateKey(key);
     validateSetOptions(options);
     const cached = this.read<T>(key);
@@ -112,6 +128,9 @@ export class MemoryCache implements CacheStore {
     if (active) {
       this.observe({ operation: "getOrSet", key, hit: false, coalesced: true });
       return active as Promise<T>;
+    }
+    if (this.inFlight.size >= this.maxEntries) {
+      throw new Error("MemoryCache capacity is exhausted");
     }
 
     this.observe({ operation: "getOrSet", key, hit: false, coalesced: false });
@@ -135,11 +154,13 @@ export class MemoryCache implements CacheStore {
   }
 
   clear() {
-    this.entries.clear();
-    this.tagKeys.clear();
-    // Active loaders cannot be cancelled by CacheStore. Keep their promises
-    // coalesced; once they finish, their value may repopulate the cache.
-    this.observe({ operation: "clear" });
+    return observeSyncOperation(this.telemetry, "cache.clear", () => {
+      this.entries.clear();
+      this.tagKeys.clear();
+      // Active loaders cannot be cancelled by CacheStore. Keep their promises
+      // coalesced; once they finish, their value may repopulate the cache.
+      this.observe({ operation: "clear" });
+    }, { "cache.operation": "clear" });
   }
 
   private read<T>(key: string): CacheRead<T> {

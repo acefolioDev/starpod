@@ -1,7 +1,10 @@
 import { readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
 import type { Application, Feature } from "./feature";
-import { Container, GraphError } from "../di/di";
+import { featureImports, orderFeatureImports } from "./imports";
+import { Container, GraphError, provideValue, providerLifetime, providerToken } from "../di/di";
+import { tokenName } from "../di/helpers";
+import { REQUEST_CONTEXT, type StarpodRequestContext } from "../http/http";
 
 export class ArchitectureError extends Error {
   constructor(violations: string[]) {
@@ -57,7 +60,16 @@ export async function auditArchitecture(
 
   if (app) {
     assertWired(app, folders, violations);
-    for (const feature of app.features) assertFeatureGraph(feature, app, violations);
+    assertApplicationGraph(app, violations);
+    try {
+      const root = new Container(app.providers);
+      const containers = new Map<Feature, Container>();
+      for (const feature of orderFeatureImports(app.features)) {
+        assertFeatureGraph(feature, app, violations, root, containers);
+      }
+    } catch (error) {
+      violations.push(error instanceof Error ? error.message : String(error));
+    }
   }
 
   return Object.freeze({
@@ -80,7 +92,7 @@ async function rejectJavaScript(root: string, violations: string[], projectRoot:
   }
 }
 
-async function sealFeatures(root: string, violations: string[], _projectRoot: string): Promise<string[]> {
+async function sealFeatures(root: string, violations: string[], projectRoot: string): Promise<string[]> {
   const entries = await readdir(root, { withFileTypes: true }).catch(() => {
     violations.push("src/features is missing");
     return [];
@@ -106,24 +118,33 @@ async function sealFeatures(root: string, violations: string[], _projectRoot: st
 
     const dir = join(root, name);
     const children = await readdir(dir, { withFileTypes: true });
-    if (children.some((child) => child.isDirectory())) violations.push(`${name}/ must be flat — no nested folders`);
-
     const files = children.filter((child) => child.isFile()).map((child) => child.name);
     for (const suffix of REQUIRED) {
       const expected = `${name}.${suffix}`;
       if (!files.includes(expected)) violations.push(`${name}/ is missing required file ${expected}`);
     }
-
-    for (const file of files) {
-      if (!file.endsWith(".ts")) {
-        violations.push(`${name}/ only .ts files are allowed (found ${file})`);
-      } else if (!file.startsWith(`${name}.`)) {
-        violations.push(`${name}/ every file must start with "${name}." (found ${file})`);
-      }
-    }
+    await validateFeatureFiles(dir, name, violations, projectRoot);
   }
 
   return features;
+}
+
+async function validateFeatureFiles(
+  directory: string,
+  name: string,
+  violations: string[],
+  projectRoot: string,
+) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      await validateFeatureFiles(path, name, violations, projectRoot);
+      continue;
+    }
+    if (entry.name.endsWith(".ts") || /\.(js|mjs|cjs)$/.test(entry.name)) continue;
+    violations.push(`${name}/ only .ts files are allowed (found ${rel(path, projectRoot)})`);
+  }
 }
 
 async function sealInfra(root: string, violations: string[], projectRoot: string) {
@@ -152,21 +173,55 @@ function assertWired(app: Application, folders: string[], violations: string[]) 
   }
 }
 
-function assertFeatureGraph(feature: Feature, app: Application, violations: string[]) {
+function assertFeatureGraph(
+  feature: Feature,
+  app: Application,
+  violations: string[],
+  root: Container,
+  containers: Map<Feature, Container>,
+) {
   if (typeof feature.controller.prototype.routes !== "function") {
     violations.push(`${feature.name}: controller must define routes(app)`);
   }
 
-  const container = new Container(app.providers).scope([
-    ...feature.uses,
-    ...feature.providers,
-    feature.controller,
+  const container = root.scope([...feature.providers, feature.controller], featureImports(feature, containers));
+  containers.set(feature, container);
+  const requestContainer = container.requestScope([
+    provideValue(REQUEST_CONTEXT, {} as StarpodRequestContext),
   ]);
   try {
     container.validate(feature.controller);
+    for (const token of feature.uses) {
+      const provider = app.providers.find((candidate) => providerToken(candidate) === token);
+      if (!provider) {
+        throw new GraphError(`used provider ${tokenName(token)} is not registered at application scope`);
+      }
+      const scope = providerLifetime(provider) === "singleton" ? container : requestContainer;
+      scope.validate(token);
+    }
+    for (const provider of feature.providers) {
+      const scope = providerLifetime(provider) === "singleton" ? container : requestContainer;
+      scope.validate(providerToken(provider));
+    }
   } catch (error) {
     const message = error instanceof GraphError || error instanceof Error ? error.message : String(error);
     violations.push(`${feature.name}: ${message}`);
+  }
+}
+
+function assertApplicationGraph(app: Application, violations: string[]) {
+  const container = new Container(app.providers);
+  const requestContainer = container.requestScope([
+    provideValue(REQUEST_CONTEXT, {} as StarpodRequestContext),
+  ]);
+  for (const provider of app.providers) {
+    try {
+      const scope = providerLifetime(provider) === "singleton" ? container : requestContainer;
+      scope.validate(providerToken(provider));
+    } catch (error) {
+      const message = error instanceof GraphError || error instanceof Error ? error.message : String(error);
+      violations.push(`application: ${message}`);
+    }
   }
 }
 

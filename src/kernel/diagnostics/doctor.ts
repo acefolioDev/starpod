@@ -20,6 +20,8 @@ export type DoctorOptions = {
   readonly root?: string;
   readonly app?: Application;
   readonly environment?: string;
+  /** Treat warnings as blocking findings for release or deployment gates. */
+  readonly strict?: boolean;
 };
 
 type PackageJson = {
@@ -60,7 +62,7 @@ export async function doctor(options: DoctorOptions = {}): Promise<DoctorReport>
   }
 
   return Object.freeze({
-    ok: !findings.some((finding) => finding.severity === "error"),
+    ok: !findings.some((finding) => finding.severity === "error" || (options.strict && finding.severity === "warning")),
     findings: Object.freeze(findings),
   });
 }
@@ -145,11 +147,18 @@ async function checkProductionFiles(root: string, pkg: PackageJson | undefined, 
   if (!(await Bun.file(join(root, "bun.lock")).exists())) {
     findings.push({ severity: "warning", code: "LOCKFILE", message: "bun.lock is missing; production dependency installs are not reproducible" });
   }
-  const dockerfile = await Bun.file(join(root, "Dockerfile")).exists();
+  const dockerfilePath = join(root, "Dockerfile");
+  const dockerfile = await Bun.file(dockerfilePath).exists();
   if (!dockerfile) {
     findings.push({ severity: "warning", code: "CONTAINER_FILE", message: "Dockerfile is missing; verify the deployment artifact is defined elsewhere" });
-  } else if (!(await Bun.file(join(root, ".dockerignore")).exists())) {
-    findings.push({ severity: "warning", code: "CONTAINER_IGNORE", message: ".dockerignore is missing; verify secrets and development files are excluded from images" });
+  } else {
+    if (!(await Bun.file(join(root, ".dockerignore")).exists())) {
+      findings.push({ severity: "warning", code: "CONTAINER_IGNORE", message: ".dockerignore is missing; verify secrets and development files are excluded from images" });
+    }
+    const dockerSource = await readFile(dockerfilePath, "utf8");
+    if (!/^\s*USER\s+\S+/im.test(dockerSource)) {
+      findings.push({ severity: "warning", code: "CONTAINER_ROOT", message: "Dockerfile does not set a non-root USER; verify the process cannot run as root" });
+    }
   }
   const start = isRecord(pkg?.scripts) && typeof pkg.scripts.start === "string" ? pkg.scripts.start : undefined;
   if (start?.includes("--watch")) {

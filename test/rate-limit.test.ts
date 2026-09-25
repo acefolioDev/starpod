@@ -159,4 +159,33 @@ describe("rate limiting", () => {
     })(new Elysia()).get("/", () => "ok");
     expect((await malformed.handle(new Request("http://localhost/"))).status).toBe(500);
   });
+
+  test("creates safe operation telemetry without exposing identities", async () => {
+    const spans: string[] = [];
+    const metrics: string[] = [];
+    const app = rateLimit({
+      name: "login",
+      limit: 1,
+      windowMs: 10_000,
+      key: () => "secret-user-key",
+      tracer: {
+        startSpan(name, attributes) {
+          spans.push(`${name}:${attributes?.["rate_limit.name"]}`);
+          return { setAttribute() {}, recordException() {}, setStatus() {}, end() {} };
+        },
+      },
+      metrics: {
+        increment(name, _value, labels) { metrics.push(`${name}:${labels?.outcome}`); },
+        observe() {},
+      },
+    })(new Elysia()).get("/", () => "ok");
+
+    await app.handle(new Request("http://localhost/"));
+    await app.handle(new Request("http://localhost/"));
+
+    expect(spans).toEqual(["security.rate_limit:login", "security.rate_limit:login"]);
+    expect(metrics).toContain("security.rate_limit.operations:success");
+    expect(metrics).toContain("security.rate_limit.operations:error");
+    expect(JSON.stringify(spans)).not.toContain("secret-user-key");
+  });
 });

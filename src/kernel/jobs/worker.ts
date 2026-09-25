@@ -10,6 +10,7 @@ import { assertJsonValue } from "../serialization/wire";
 import { validateTenantId } from "../security/tenant-id";
 import { createJobContext, observeJob } from "./context";
 import { jobIdempotencyKey, type JobIdempotencyStore } from "./idempotency";
+import { observeOperation, type OperationTelemetry } from "../observability/operation";
 
 export type JobDelivery = {
   readonly id: string;
@@ -21,7 +22,7 @@ export type JobDelivery = {
   readonly signal?: AbortSignal;
 };
 
-export type JobWorkerOptions = {
+export type JobWorkerOptions = OperationTelemetry & {
   readonly onEvent?: JobObserver;
   readonly idempotency?: JobIdempotencyStore;
 };
@@ -60,8 +61,10 @@ export class JobWorker {
       }
     };
     const key = jobIdempotencyKey(delivery.name, delivery.tenantId, delivery.id);
-    if (this.options.idempotency) await this.options.idempotency.runOnce(key, execute);
-    else await execute();
+    return observeOperation(this.options, "jobs.worker", async () => {
+      if (this.options.idempotency) await this.options.idempotency.runOnce(key, execute);
+      else await execute();
+    }, { "job.name": delivery.name, "job.attempt": attempt });
   }
 
   private observe(event: JobEvent) {

@@ -1,4 +1,5 @@
 import { TooManyRequests } from "../errors/errors";
+import { observeOperation, type OperationTelemetry } from "../observability/operation";
 
 export type BruteForceState = {
   readonly failures: number;
@@ -23,7 +24,7 @@ export type BruteForceDecision = {
   readonly retryAfterMs: number;
 };
 
-export type BruteForceOptions = {
+export type BruteForceOptions = OperationTelemetry & {
   readonly maxFailures: number;
   readonly windowMs: number;
   readonly lockoutMs: number;
@@ -144,16 +145,18 @@ export class BruteForceGuard {
   }
 
   async run<TResult>(key: string, authenticate: () => TResult | Promise<TResult>): Promise<TResult> {
-    await this.assertAllowed(key);
-    let result: TResult;
-    try {
-      result = await authenticate();
-    } catch (error) {
-      await this.recordFailure(key);
-      throw error;
-    }
-    await this.recordSuccess(key);
-    return result;
+    return observeOperation(this.options, "security.brute_force", async () => {
+      await this.assertAllowed(key);
+      let result: TResult;
+      try {
+        result = await authenticate();
+      } catch (error) {
+        await this.recordFailure(key);
+        throw error;
+      }
+      await this.recordSuccess(key);
+      return result;
+    });
   }
 
   private async activeState(key: string) {

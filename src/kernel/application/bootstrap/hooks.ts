@@ -13,6 +13,7 @@ import { applySecurityHeaders, type SecurityHeadersOptions } from "../../securit
 import {
   disposeRequestScope,
   durationFor,
+  deferResponseDisposal,
   finishSpan,
   isStreamingResponse,
   logSafely,
@@ -109,26 +110,28 @@ export function createBootstrapElysia(
     .onError(async ({ error, request, set }) => {
       const requestId = requestIds.get(request) ?? requestIdFrom(request.headers);
       const correlationId = correlationIds.get(request) ?? correlationIdFrom(request.headers, requestId);
-      const serialized = serializeError(error, {
+      const nativeResponse = typeof Response !== "undefined" && error instanceof Response ? error : undefined;
+      const serialized = nativeResponse ? undefined : serializeError(error, {
         development: environment !== "production",
         requestId,
       });
-      set.status = serialized.status;
+      const status = nativeResponse?.status ?? serialized?.status ?? 500;
+      set.status = status;
       set.headers[REQUEST_ID_HEADER] = requestId;
       set.headers[CORRELATION_ID_HEADER] = correlationId;
-      logSafely(options.logger, "error", "http.request.error", {
+      logSafely(options.logger, nativeResponse ? "info" : "error", nativeResponse ? "http.request" : "http.request.error", {
         requestId,
         correlationId,
         method: request.method,
         path: pathFromUrl(request.url),
-        status: serialized.status,
+        status,
         durationMs: durationFor(request, requestStartedAt),
-        errorCode: serialized.payload.error.code,
+        ...(serialized ? { errorCode: serialized.payload.error.code } : {}),
       });
-      finishSpan(request, serialized.status, error, requestSpans, endedSpans, requestStartedAt, options.logger, requestId);
+      finishSpan(request, status, nativeResponse ? undefined : error, requestSpans, endedSpans, requestStartedAt, options.logger, requestId);
       recordRequestMetrics(
         request,
-        serialized.status,
+        status,
         requestStartedAt,
         recordedMetrics,
         options.metrics,
@@ -137,7 +140,7 @@ export function createBootstrapElysia(
       );
       recordRequestInspector(
         request,
-        serialized.status,
+        status,
         requestStartedAt,
         requestRoutes,
         recordedInspector,
@@ -145,10 +148,19 @@ export function createBootstrapElysia(
         options.logger,
         requestId,
         correlationId,
-        serialized.payload.error.code,
+        serialized?.payload.error.code,
       );
+      if (nativeResponse && isStreamingResponse(nativeResponse)) {
+        return deferResponseDisposal(nativeResponse, () => disposeRequestScope(
+          request,
+          requestScopes,
+          activeRequestScopes,
+          options.logger,
+          requestId,
+        ));
+      }
       await disposeRequestScope(request, requestScopes, activeRequestScopes, options.logger, requestId);
-      return serialized.payload;
+      return nativeResponse ?? serialized!.payload;
     })
     .onAfterResponse(async ({ request }) => {
       await disposeRequestScope(

@@ -1,3 +1,5 @@
+import { observeOperation, type OperationTelemetry } from "../observability/operation";
+
 export type DatabaseAdapter<TClient, TTransaction = TClient> = {
   readonly connect: () => TClient | Promise<TClient>;
   readonly close: (client: TClient) => void | Promise<void>;
@@ -16,7 +18,7 @@ export type DatabaseEvent = {
   readonly durationMs?: number;
 };
 
-export type DatabaseConnectionOptions = {
+export type DatabaseConnectionOptions = OperationTelemetry & {
   readonly onEvent?: (event: DatabaseEvent) => void;
   readonly now?: () => number;
 };
@@ -35,6 +37,7 @@ export class DatabaseConnection<TClient, TTransaction = TClient> {
   private readonly idleWaiters: Array<() => void> = [];
   private readonly onEvent: ((event: DatabaseEvent) => void) | undefined;
   private readonly now: () => number;
+  private readonly telemetry: OperationTelemetry;
 
   constructor(
     private readonly adapter: DatabaseAdapter<TClient, TTransaction>,
@@ -42,6 +45,7 @@ export class DatabaseConnection<TClient, TTransaction = TClient> {
   ) {
     this.onEvent = options.onEvent;
     this.now = options.now ?? (() => performance.now());
+    this.telemetry = options;
   }
 
   get status(): DatabaseState {
@@ -54,7 +58,7 @@ export class DatabaseConnection<TClient, TTransaction = TClient> {
     if (this.initializing) return this.initializing;
 
     this.state = "connecting";
-    this.initializing = (async () => {
+    this.initializing = observeOperation(this.telemetry, "db.connect", async () => {
       const startedAt = this.now();
       this.observe({ operation: "connect", status: "start" });
       try {
@@ -72,7 +76,7 @@ export class DatabaseConnection<TClient, TTransaction = TClient> {
         this.observe({ operation: "connect", status: "failure", durationMs: this.duration(startedAt) });
         throw error;
       }
-    })();
+    }, { "db.operation": "connect" });
 
     try {
       await this.initializing;
@@ -82,43 +86,49 @@ export class DatabaseConnection<TClient, TTransaction = TClient> {
   }
 
   async use<TResult>(work: (client: TClient) => TResult | Promise<TResult>): Promise<TResult> {
-    await this.initialize();
-    const release = this.beginOperation();
-    try {
-      return await work(this.requireClient());
-    } finally {
-      release();
-    }
+    return observeOperation(this.telemetry, "db.use", async () => {
+      await this.initialize();
+      const release = this.beginOperation();
+      try {
+        return await work(this.requireClient());
+      } finally {
+        release();
+      }
+    }, { "db.operation": "use" });
   }
 
   async transaction<TResult>(
     work: (transaction: TTransaction) => TResult | Promise<TResult>,
   ): Promise<TResult> {
-    await this.initialize();
-    const release = this.beginOperation();
-    const startedAt = this.now();
-    this.observe({ operation: "transaction", status: "start" });
-    try {
-      const result = await this.adapter.transaction(this.requireClient(), work);
-      this.observe({ operation: "transaction", status: "success", durationMs: this.duration(startedAt) });
-      return result;
-    } catch (error) {
-      this.observe({ operation: "transaction", status: "failure", durationMs: this.duration(startedAt) });
-      throw error;
-    } finally {
-      release();
-    }
+    return observeOperation(this.telemetry, "db.transaction", async () => {
+      await this.initialize();
+      const release = this.beginOperation();
+      const startedAt = this.now();
+      this.observe({ operation: "transaction", status: "start" });
+      try {
+        const result = await this.adapter.transaction(this.requireClient(), work);
+        this.observe({ operation: "transaction", status: "success", durationMs: this.duration(startedAt) });
+        return result;
+      } catch (error) {
+        this.observe({ operation: "transaction", status: "failure", durationMs: this.duration(startedAt) });
+        throw error;
+      } finally {
+        release();
+      }
+    }, { "db.operation": "transaction" });
   }
 
   async ping(signal?: AbortSignal) {
-    await this.initialize();
-    if (!this.adapter.ping) return;
-    const release = this.beginOperation();
-    try {
-      await this.adapter.ping(this.requireClient(), signal);
-    } finally {
-      release();
-    }
+    return observeOperation(this.telemetry, "db.ping", async () => {
+      await this.initialize();
+      if (!this.adapter.ping) return;
+      const release = this.beginOperation();
+      try {
+        await this.adapter.ping(this.requireClient(), signal);
+      } finally {
+        release();
+      }
+    }, { "db.operation": "ping" });
   }
 
   async dispose() {
@@ -137,15 +147,17 @@ export class DatabaseConnection<TClient, TTransaction = TClient> {
     const client = this.client as TClient;
     this.client = undefined;
     this.hasClient = false;
-    const startedAt = this.now();
-    this.observe({ operation: "close", status: "start" });
-    try {
-      await this.adapter.close(client);
-      this.observe({ operation: "close", status: "success", durationMs: this.duration(startedAt) });
-    } catch (error) {
-      this.observe({ operation: "close", status: "failure", durationMs: this.duration(startedAt) });
-      throw error;
-    }
+    await observeOperation(this.telemetry, "db.close", async () => {
+      const startedAt = this.now();
+      this.observe({ operation: "close", status: "start" });
+      try {
+        await this.adapter.close(client);
+        this.observe({ operation: "close", status: "success", durationMs: this.duration(startedAt) });
+      } catch (error) {
+        this.observe({ operation: "close", status: "failure", durationMs: this.duration(startedAt) });
+        throw error;
+      }
+    }, { "db.operation": "close" });
   }
 
   private requireClient() {

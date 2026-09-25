@@ -98,6 +98,26 @@ describe("HttpClient", () => {
     });
   });
 
+  test("blocks redirects by default but preserves an explicit native override", async () => {
+    let defaultRedirect: RequestInit["redirect"];
+    let explicitRedirect: RequestInit["redirect"];
+    const fetch = async (_input: string | URL, init?: RequestInit) => {
+      defaultRedirect = init?.redirect;
+      return new Response("ok");
+    };
+    await new HttpClient({ fetch }).text("https://api.example.test/default");
+
+    await new HttpClient({
+      fetch: async (_input, init) => {
+        explicitRedirect = init?.redirect;
+        return new Response("ok");
+      },
+    }).text("https://api.example.test/explicit", { redirect: "follow" });
+
+    expect(defaultRedirect).toBe("error");
+    expect(explicitRedirect).toBe("follow");
+  });
+
   test("allows an explicit origin allowlist for multi-service clients", async () => {
     let received = "";
     const client = new HttpClient({

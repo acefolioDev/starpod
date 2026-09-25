@@ -63,6 +63,48 @@ describe("project doctor", () => {
     const report = await doctor({ root: await makeRoot(), environment: "prod" });
     expect(report.findings).toContainEqual(expect.objectContaining({ code: "NODE_ENV", severity: "error" }));
   });
+
+  test("warns when a production container has no explicit user", async () => {
+    const root = await makeRoot();
+    await mkdir(join(root, "src", "features", "hello"), { recursive: true });
+    await mkdir(join(root, "src", "infra"), { recursive: true });
+    await writeFile(join(root, "package.json"), JSON.stringify({
+      type: "module",
+      dependencies: { elysia: "^1.4.0" },
+      scripts: { start: "bun src/main.ts" },
+    }));
+    await writeFile(join(root, "src", "app.ts"), "export {};");
+    await writeFile(join(root, "src", "main.ts"), "export {};");
+    await writeFile(join(root, ".gitignore"), ".env\n.env.*\n");
+    await writeFile(join(root, "Dockerfile"), "FROM oven/bun:1.4.0\nCMD [\"bun\", \"src/main.ts\"]\n");
+    await writeFile(join(root, ".dockerignore"), ".env\n");
+
+    const report = await doctor({ root, environment: "production" });
+
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      code: "CONTAINER_ROOT",
+      severity: "warning",
+    }));
+  });
+
+  test("can treat production warnings as blocking in strict mode", async () => {
+    const root = await makeRoot();
+    await mkdir(join(root, "src", "features", "hello"), { recursive: true });
+    await mkdir(join(root, "src", "infra"), { recursive: true });
+    await writeFile(join(root, "package.json"), JSON.stringify({
+      type: "module",
+      dependencies: { elysia: "^1.4.0" },
+      scripts: { start: "bun src/main.ts" },
+    }));
+    await writeFile(join(root, "src", "app.ts"), "export {};\n");
+    await writeFile(join(root, "src", "main.ts"), "export {};\n");
+    await writeFile(join(root, ".gitignore"), ".env\n.env.*\n");
+
+    const report = await doctor({ root, environment: "production", strict: true });
+
+    expect(report.ok).toBe(false);
+    expect(report.findings.some((finding) => finding.severity === "warning")).toBe(true);
+  });
 });
 
 async function makeRoot() {

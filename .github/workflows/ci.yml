@@ -2,7 +2,11 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   verify:
@@ -14,22 +18,13 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.4.0"
+          bun-version: 1.4.0
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Verify framework
+      - name: Verify source and examples
         run: bun run check
 
-      - name: Verify release build
-        run: bun run build
-
-      - name: Verify generated application types
-        run: bunx tsc --noEmit -p template/tsconfig.json
-
-      - name: Verify package contents
-        run: bun pm pack --dry-run
-
-      - name: Verify packed package in a clean consumer
+      - name: Verify packaged consumer
         run: bun run test:package

@@ -89,45 +89,6 @@ export type JobQueue = {
   close(options?: { readonly drain?: boolean }): Promise<void>;
 };
 
-/** Transport boundary for a durable queue or broker. */
-export type JobEnvelopePublisher = {
-  publish(envelope: JobEnvelope): Promise<JobReceipt>;
-};
-
-export type DurableJobDispatcherOptions = {
-  readonly onEvent?: JobObserver;
-};
-
-/**
- * Encode typed jobs before handing them to an application-owned durable
- * transport. Handler closures never cross this boundary; workers resolve the
- * name through JobRegistry and decode the persisted payload.
- */
-export class DurableJobDispatcher {
-  constructor(
-    private readonly publisher: JobEnvelopePublisher,
-    private readonly options: DurableJobDispatcherOptions = {},
-  ) {}
-
-  async dispatch<TPayload>(
-    job: JobDefinition<TPayload>,
-    payload: TPayload,
-    options: JobOptions = {},
-  ): Promise<JobReceipt> {
-    const envelope = encodeJob(job, payload, options);
-    const receipt = await this.publisher.publish(envelope);
-    if (!receipt || receipt.name !== envelope.name || !receipt.id) {
-      throw new Error(`durable publisher returned an invalid receipt for job "${envelope.name}"`);
-    }
-    try {
-      this.options.onEvent?.({ operation: "dispatch", id: receipt.id, name: receipt.name });
-    } catch {
-      // Durable job telemetry must not change publisher correctness.
-    }
-    return receipt;
-  }
-}
-
 /**
  * Registry used by workers that receive a job name and serialized payload
  * from a durable queue. The in-memory queue does not need a registry because

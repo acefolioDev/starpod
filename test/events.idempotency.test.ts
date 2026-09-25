@@ -48,4 +48,15 @@ describe("MemoryEventIdempotencyStore", () => {
 
     expect(calls).toBe(2);
   });
+
+  test("bounds unique pending deliveries", async () => {
+    const store = new MemoryEventIdempotencyStore({ maxEntries: 1 });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const first = store.runOnce("pending-1", async () => gate);
+
+    await expect(store.runOnce("pending-2", async () => undefined)).rejects.toThrow("capacity");
+    release();
+    await first;
+  });
 });

@@ -169,6 +169,43 @@ export function recordRequestInspector(
   }
 }
 
+/** Keep request resources alive until an error handler's native stream ends. */
+export function deferResponseDisposal(response: Response, dispose: () => Promise<void>): Response {
+  const body = response.body;
+  if (!body) return response;
+  const reader = body.getReader();
+  let disposed = false;
+  const cleanup = async () => {
+    if (disposed) return;
+    disposed = true;
+    await dispose();
+  };
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const next = await reader.read();
+        if (next.done) {
+          await cleanup();
+          controller.close();
+        } else {
+          controller.enqueue(next.value);
+        }
+      } catch (error) {
+        await cleanup();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason);
+      } finally {
+        await cleanup();
+      }
+    },
+  });
+  return new Response(stream, { status: response.status, statusText: response.statusText, headers: response.headers });
+}
+
 export async function disposeRequestScope(
   request: Request,
   scopes: WeakMap<Request, Container>,

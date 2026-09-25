@@ -22,8 +22,8 @@ try {
   await Bun.$`bun install ${tarball}`.cwd(consumer);
   await Bun.$`bun -e ${`
     import { Elysia } from "elysia";
-    import { EventConsumer, EventOutbox, HttpClient, JobWorker, MemoryEventIdempotencyStore, MemoryJobIdempotencyStore, apiKeyFrom, clientIp, cookieValue, csrfProtection, csrfToken, doctor, etag, negotiateContentType, openTelemetryMetrics, openTelemetryTracer, plugin, safeRedirect, start } from "starpod";
-    if (typeof start !== "function" || typeof plugin !== "function" || typeof HttpClient !== "function" || typeof JobWorker !== "function" || typeof EventConsumer !== "function" || typeof EventOutbox !== "function" || typeof MemoryEventIdempotencyStore !== "function" || typeof MemoryJobIdempotencyStore !== "function" || typeof clientIp !== "function" || typeof negotiateContentType !== "function" || typeof openTelemetryMetrics !== "function" || typeof openTelemetryTracer !== "function" || typeof safeRedirect !== "function" || typeof csrfProtection !== "function" || typeof csrfToken !== "function" || typeof doctor !== "function" || typeof etag !== "function") throw new Error("runtime exports missing");
+    import { DurableJobDispatcher, EventConsumer, EventOutbox, HttpClient, JobWorker, MemoryEventIdempotencyStore, MemoryJobIdempotencyStore, apiKeyFrom, clientIp, cookieValue, csrfProtection, csrfToken, doctor, etag, inspectorRoutes, negotiateContentType, openTelemetryMetrics, openTelemetryTracer, plugin, safeRedirect, start } from "starpod";
+    if (typeof start !== "function" || typeof plugin !== "function" || typeof HttpClient !== "function" || typeof JobWorker !== "function" || typeof DurableJobDispatcher !== "function" || typeof EventConsumer !== "function" || typeof EventOutbox !== "function" || typeof MemoryEventIdempotencyStore !== "function" || typeof MemoryJobIdempotencyStore !== "function" || typeof clientIp !== "function" || typeof negotiateContentType !== "function" || typeof openTelemetryMetrics !== "function" || typeof openTelemetryTracer !== "function" || typeof safeRedirect !== "function" || typeof csrfProtection !== "function" || typeof csrfToken !== "function" || typeof doctor !== "function" || typeof etag !== "function" || typeof inspectorRoutes !== "function") throw new Error("runtime exports missing");
     const request = new Request("http://starpod.test", { headers: { "x-api-key": "key", cookie: "session=value" } });
     if (apiKeyFrom(request) !== "key" || cookieValue(request, "session") !== "value") throw new Error("auth exports failed");
     const app = new Elysia().get("/", () => "ok");
@@ -43,7 +43,7 @@ try {
   if (!manifest.includes("/health/ready") || !manifest.includes("runAsNonRoot: true")) {
     throw new Error("generated Kubernetes manifest is missing production probes or security settings");
   }
-  const audit = JSON.parse(await Bun.$`bun ${cli} audit --json`.cwd(consumer).text()) as { ok?: boolean };
+  const audit = JSON.parse(await Bun.$`bun ${cli} audit --production --strict --json`.cwd(consumer).text()) as { ok?: boolean };
   if (audit.ok !== true) throw new Error("generated application architecture audit failed");
   const diagnosis = JSON.parse(await Bun.$`bun ${cli} doctor --json`.cwd(consumer).text()) as { ok?: boolean };
   if (diagnosis.ok !== true) throw new Error("generated application doctor reported blocking findings");

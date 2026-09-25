@@ -35,6 +35,9 @@ export class MemoryIdempotencyStore implements IdempotencyStore {
     if (this.completed.has(id)) return;
     const active = this.pending.get(id);
     if (active) return active;
+    if (this.pending.size >= this.maxEntries) {
+      throw new Error("MemoryIdempotencyStore capacity is exhausted");
+    }
 
     const pending = (async () => {
       await work();
