@@ -41,6 +41,7 @@ export class Container {
       isRequestScope,
       imports,
       isDisposed: () => this.disposed,
+      initialize: () => this.initialize(),
     });
   }
   register(...providers: readonly Provider[]) {

@@ -265,9 +265,12 @@ export const app = application({ features: [users, billing] });
 ```
 
 Only tokens listed in `exports` are visible to an importing feature. Imported providers
-are resolved from the original feature container, so singleton, request, and lifecycle
-ownership are shared rather than duplicated. Import cycles and undeclared imports fail
-during composition or the architecture seal.
+are resolved from the original feature container, including that provider's private
+constructor dependencies, so module internals do not leak into the importer. Singleton,
+request, and lifecycle ownership are shared rather than duplicated. Import cycles and
+undeclared imports fail during composition or the architecture seal. A feature also
+cannot silently shadow an imported export; use a distinct token or make an explicit
+application-level override in tests.
 
 ## Plugins
 

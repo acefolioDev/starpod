@@ -23,6 +23,7 @@ type ResolverContainer = {
   readonly isRequestScope: boolean;
   readonly imports: readonly ContainerImport[];
   readonly isDisposed: () => boolean;
+  readonly initialize: () => Promise<void>;
 };
 
 const states = new WeakMap<object, ResolverContainer>();
@@ -46,11 +47,16 @@ export function buildSync<T>(container: object, token: InjectionToken<T>, stack:
   if (cached.found) return cached.value as T;
   if (isAsyncFactory(provider)) throw new GraphError(`${tokenName(token)} is asynchronous and must be resolved with resolveAsync()`);
   const dependencies = dependenciesOf(provider);
-  assertDependencies(container, token, lifetime, dependencies);
+  assertDependencies(owner, transientScope, token, lifetime, dependencies);
   assertConstructorArity(provider, token, dependencies);
   const next = [...stack, token];
   const dependencyScope = lifetime === "singleton" ? owner : transientScope;
-  const args = dependencies.map((dependency) => buildSync(container, dependency, next, dependencyScope));
+  const args = dependencies.map((dependency) => buildSync(
+    dependencyContainer(owner, dependencyScope, dependency),
+    dependency,
+    next,
+    dependencyScope,
+  ));
   const instance = constructSync(provider, args) as T;
   if (cache) {
     const state = stateOf(cache);
@@ -67,7 +73,11 @@ export async function buildAsync<T>(container: object, token: InjectionToken<T>,
   const owner = ownerOf(container, token);
   if (!owner) {
     const imported = importedOwnerOf(container, token);
-    if (imported) return buildAsync(imported, token, stack, transientScope);
+    if (imported) {
+      const value = await buildAsync(imported, token, stack, transientScope);
+      await stateOf(imported).initialize();
+      return value;
+    }
     throw missing(token);
   }
   const provider = requireProvider(owner, token, stack);
@@ -79,9 +89,9 @@ export async function buildAsync<T>(container: object, token: InjectionToken<T>,
   const pending = cache ? stateOf(cache).pending.get(token) : undefined;
   if (pending) return pending as Promise<T>;
   const dependencies = dependenciesOf(provider);
-  assertDependencies(container, token, lifetime, dependencies);
+  assertDependencies(owner, transientScope, token, lifetime, dependencies);
   const dependencyScope = lifetime === "singleton" ? owner : transientScope;
-  const work = constructAsync(container, provider, token, stack, dependencyScope);
+  const work = constructAsync(owner, provider, token, stack, dependencyScope);
   if (!cache) {
     const instance = await work;
     const state = stateOf(transientScope);
@@ -111,7 +121,7 @@ export function validateToken(container: object, token: InjectionToken, stack: I
   const lifetime = providerLifetime(provider);
   assertRequestScope(lifetime, requestScope, token);
   const dependencies = dependenciesOf(provider);
-  assertDependencies(container, token, lifetime, dependencies);
+  assertDependencies(owner, owner, token, lifetime, dependencies);
   assertConstructorArity(provider, token, dependencies);
   const next = [...stack, token];
   for (const dependency of dependencies) validateToken(container, dependency, next, requestScope);
@@ -129,7 +139,12 @@ async function constructAsync<T>(container: object, provider: Provider, token: I
   const dependencies = dependenciesOf(provider);
   assertConstructorArity(provider, token, dependencies);
   const next = [...stack, token];
-  const args = await Promise.all(dependencies.map((dependency) => buildAsync(container, dependency, next, transientScope)));
+  const args = await Promise.all(dependencies.map((dependency) => buildAsync(
+    dependencyContainer(container, transientScope, dependency),
+    dependency,
+    next,
+    transientScope,
+  )));
   if (typeof provider === "function") return new (provider as unknown as new (...args: unknown[]) => T)(...args);
   if ("useValue" in provider) return provider.useValue as T;
   return (provider.useFactory as (...args: unknown[]) => Promise<T>)(...args);
@@ -144,8 +159,14 @@ function requireProvider(owner: object, token: InjectionToken, stack: InjectionT
   return provider;
 }
 
-function assertDependencies(container: object, token: InjectionToken, lifetime: ReturnType<typeof providerLifetime>, dependencies: readonly InjectionToken[]) {
-  assertNoRequestDependency(token, lifetime, dependencies, (dependency) => providerOf(container, dependency));
+function assertDependencies(
+  owner: object,
+  transientScope: object,
+  token: InjectionToken,
+  lifetime: ReturnType<typeof providerLifetime>,
+  dependencies: readonly InjectionToken[],
+) {
+  assertNoRequestDependency(token, lifetime, dependencies, (dependency) => providerOf(owner, transientScope, dependency));
 }
 
 function assertRequestScope(lifetime: ReturnType<typeof providerLifetime>, requestScope: boolean, token: InjectionToken) {
@@ -171,9 +192,16 @@ function ownerOf(container: object, token: InjectionToken): object | undefined {
   return state.parent ? ownerOf(state.parent, token) : undefined;
 }
 
-function providerOf(container: object, token: InjectionToken) {
-  const owner = ownerOf(container, token) ?? importedOwnerOf(container, token);
-  return owner ? stateOf(owner).providers.get(token) : undefined;
+function providerOf(owner: object, transientScope: object, token: InjectionToken) {
+  const local = stateOf(transientScope).providers.get(token);
+  if (local) return local;
+  const resolvedOwner = ownerOf(owner, token) ?? importedOwnerOf(owner, token);
+  return resolvedOwner ? stateOf(resolvedOwner).providers.get(token) : undefined;
+}
+
+function dependencyContainer(owner: object, transientScope: object, token: InjectionToken) {
+  if (stateOf(transientScope).providers.has(token)) return transientScope;
+  return owner;
 }
 
 function importedOwnerOf(container: object, token: InjectionToken): object | undefined {

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { Elysia } from "elysia";
 import { createGracefulShutdown, installGracefulShutdown } from "../src/kernel/application/lifecycle";
 
 describe("graceful shutdown", () => {
@@ -61,5 +62,11 @@ describe("graceful shutdown", () => {
 
     expect(stopped).toBe(1);
     expect(process.listenerCount("SIGTERM")).toBe(before);
+  });
+
+  test("accepts native Elysia's synchronous stop method", () => {
+    const cleanup = installGracefulShutdown(new Elysia(), { signals: [] });
+    cleanup();
+    expect(typeof cleanup).toBe("function");
   });
 });

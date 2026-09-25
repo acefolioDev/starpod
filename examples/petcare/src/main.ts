@@ -1,5 +1,7 @@
 import {
   cors,
+  defineConfig,
+  env,
   etag,
   healthRoutes,
   MemoryInspector,
@@ -8,9 +10,12 @@ import {
 } from "starpod";
 import { app } from "./app";
 
+const config = defineConfig({
+  port: env.number("PORT", { default: 3000, min: 1, max: 65_535 }),
+});
 const inspector = new MemoryInspector({ maxEvents: 2_000 });
 const { server } = await start(app, {
-  listen: Number(Bun.env.PORT ?? 3000),
+  listen: config.port,
   inspector,
   securityHeaders: { hsts: { maxAge: 31_536_000 } },
   configure: (elysia) => {

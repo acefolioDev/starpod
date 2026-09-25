@@ -1,5 +1,5 @@
 export type GracefulServer = {
-  stop(closeActiveConnections?: boolean): Promise<unknown>;
+  stop(closeActiveConnections?: boolean): void | Promise<unknown>;
 };
 
 export type ShutdownSignal = "SIGINT" | "SIGTERM";

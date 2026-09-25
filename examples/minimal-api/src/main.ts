@@ -1,8 +1,11 @@
-import { healthRoutes, start } from "starpod";
+import { defineConfig, env, healthRoutes, start } from "starpod";
 import { app } from "./app";
 
+const config = defineConfig({
+  port: env.number("PORT", { default: 3000, min: 1, max: 65_535 }),
+});
 const { server } = await start(app, {
-  listen: Number(Bun.env.PORT ?? 3000),
+  listen: config.port,
   configure: (elysia) => healthRoutes(elysia),
 });
 

@@ -109,6 +109,13 @@ export function application(input: {
         importedTokens.set(token, imported);
       }
     }
+    for (const provider of [...feature.providers, feature.controller]) {
+      const token = providerToken(provider);
+      const imported = importedTokens.get(token);
+      if (imported) {
+        throw new Error(`${feature.name}: provider ${providerName(token)} shadows exported provider from ${imported.name}`);
+      }
+    }
   }
   if (input.providers !== undefined && input.infra !== undefined) {
     throw new Error('Use application.providers or deprecated application.infra, not both');
