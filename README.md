@@ -380,39 +380,32 @@ Exposed detail objects and arrays are bounded to keep malformed validation input
 
 Every request receives a validated `x-request-id` (or a generated one). It is returned on the response and is available to native Elysia handlers as `requestId` through Elysia's derived context. `x-correlation-id` is propagated independently for tracing a related group of requests; when it is absent, it falls back to the request ID and is available as `correlationId`.
 
-## Database integration
+## Bring your own ORM
 
-Starpod does not bundle an ORM or hide a database driver's query API. `DatabaseConnection` provides the small framework-owned part that every production integration needs: one connection lifecycle, graceful cleanup, readiness probing, and transaction delegation:
+Starpod does not own persistence. Register Prisma, Drizzle, Kysely, or a native driver as an application-scoped provider; that tool owns connections, transactions, schema, and migrations. A provider with `initialize()` and `dispose()` participates in Starpod's lifecycle, while application services use the selected client directly.
 
 ```ts
-import { DatabaseConnection, provideFactory, token } from "starpod";
+import { PrismaClient } from "@prisma/client";
 
-const DATABASE = token<DatabaseConnection<DbClient, DbTransaction>>("DATABASE");
-const database = provideFactory(DATABASE, [], () => new DatabaseConnection({
-  connect: () => postgres.connect(config.databaseUrl),
-  close: (client) => client.close(),
-  transaction: (client, work) => client.transaction(work),
-  ping: (client) => client.query("select 1"),
-}));
+export class PrismaDatabase {
+  readonly client = new PrismaClient();
+
+  initialize() {
+    return this.client.$connect();
+  }
+
+  dispose() {
+    return this.client.$disconnect();
+  }
+}
 
 export const app = application({
   features: [users],
-  providers: [database],
+  providers: [PrismaDatabase],
 });
 ```
 
-Repositories still use the native client or query builder through `database.use(...)`; migration policy, models, locking, replicas, and SQL remain explicit application or driver concerns. Readiness checks can call `database.ping(signal)` without creating a second connection lifecycle. Pass `onEvent` to observe connection, transaction, and close timings. Optional `tracer` and `metrics` adapters create isolated `db.*` operation spans and counters/histograms without coupling Starpod to a telemetry vendor.
-
-Migration ordering and journal persistence are also explicit:
-
-```ts
-import { MigrationRunner } from "starpod";
-
-const runner = new MigrationRunner(migrations, migrationStore, database);
-await runner.up();
-```
-
-`MigrationRunner` sorts migration IDs, detects duplicate or unknown applied IDs, runs pending migrations under the store's deployment-specific lock, records each successful step, and rolls back in reverse order. The application-owned `MigrationStore` is responsible for durable journaling and database/advisory-lock semantics.
+Keep one client per process, inject the provider where it is needed, and run the ORM's migration command as a coordinated release step rather than on every application replica.
 
 ## Configuration
 

@@ -1,55 +1,48 @@
 ---
-title: "Database and migrations: make data ownership boring"
-label: "Database and migrations"
-description: "Your database is the town archive: valuable, shared, and not something every request should open a new copy of."
+title: "Bring your own ORM"
+label: "Bring your own ORM"
+description: "Choose an ORM or driver; Starpod stays out of schema, query, and migration ownership."
 section: runtime
 order: 20
 ---
 
 ## The idea
 
-Your database is the town archive: valuable, shared, and not something every request should open a new copy of. The hard parts are usually lifecycle, readiness, transactions, and coordinated schema change—not hiding the SQL behind a magical framework.
+Persistence is application infrastructure. Mature tools already own the hard parts: connection management, queries, transactions, schemas, and migrations. Starpod stays out of that domain so the application can choose Prisma, Drizzle, Kysely, or a native driver without a second abstraction layer.
 
-## How Starpod provides it
+## How it fits Starpod
 
-Starpod does not bundle an ORM or hide a driver. `DatabaseConnection` is a small lifecycle boundary for an application-owned client: connect, close, ping, and transaction delegation.
-
-```ts
-import { DatabaseConnection, provideFactory, token } from "starpod";
-
-type Client = { query(sql: string): Promise<unknown>; close(): Promise<void> };
-const DATABASE = token<DatabaseConnection<Client>>("DATABASE");
-
-const database = provideFactory(DATABASE, [], () => new DatabaseConnection({
-  connect: () => driver.connect(config.databaseUrl),
-  close: (client) => client.close(),
-  transaction: (client, work) => driver.transaction(client, work),
-  ping: (client) => client.query("select 1"),
-}));
-```
-
-Repositories use `database.use(...)` or the native client/query builder. Register the connection as an application provider and list `DATABASE` in a feature’s `uses` when that feature consumes it.
-
-## Migrations
-
-`MigrationRunner` provides deterministic ordering and orchestration; your `MigrationStore` provides durable journaling and the deployment-specific lock.
+Register the selected client as an application-scoped provider. Providers with `initialize()` and `dispose()` participate in Starpod's lifecycle; services then use the native client directly.
 
 ```ts
-import { MigrationRunner } from "starpod";
+import { PrismaClient } from "@prisma/client";
 
-const runner = new MigrationRunner(migrations, migrationStore, database);
-await runner.up();
+export class PrismaDatabase {
+  readonly client = new PrismaClient();
+
+  initialize() {
+    return this.client.$connect();
+  }
+
+  dispose() {
+    return this.client.$disconnect();
+  }
+}
 ```
 
-Migration IDs are sorted, duplicate or unknown applied IDs are rejected, pending work runs under the store lock, successful steps are recorded, and rollback proceeds in reverse order. Run migrations as a release job or an explicitly coordinated startup task; do not let every replica race without a shared lock.
+Register `PrismaDatabase` in `application({ providers })`, inject it into the services that need it, and call `database.client.user.findMany()` or Prisma's normal transaction API. The same pattern works for any other client.
+
+## Schema and migrations
+
+The selected persistence tool owns schema and migrations. For example, Prisma owns `schema.prisma`, generated types, and its migration history; Drizzle owns its TypeScript schema and generated SQL migrations. Run the tool's migration command once as a coordinated release task before application replicas start.
 
 ## Common mistakes
 
-- Assuming `DatabaseConnection` is a driver, pool, ORM, or replica manager.
-- Creating a connection per request.
-- Running migrations concurrently on every pod.
-- Calling a migration “successful” before its journal write is durable.
+- Creating a client per request instead of one application-scoped client per process.
+- Defining the same schema or migration in two systems.
+- Running the ORM's migration command concurrently on every replica.
+- Hiding ORM queries behind a generic repository that removes the ORM's useful capabilities.
 
 ## Production notes
 
-Choose pool sizing, TLS, credentials, transaction isolation, backups, replicas, schema ownership, and lock semantics in the driver/deployment layer. `ping()` supports readiness but should be cheap and bounded. Treat migration rollback as an application-specific data operation, not a universal undo guarantee.
+Choose pool sizing, TLS, credentials, transaction isolation, backups, replicas, schema ownership, and lock semantics in the ORM, driver, and deployment layer. Keep migration rollback an application-specific data operation, not a universal undo guarantee.

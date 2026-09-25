@@ -33,7 +33,7 @@ If you want the scenic route, take the ship around in this order:
 - New to Starpod: [Getting started](/docs/getting-started/), then [Features and pods](/docs/features-and-pods/) and [Dependency injection](/docs/dependency-injection/).
 - Designing a larger service: [Project structure](/docs/project-structure/), [Providers, uses, exports, and imports](/docs/providers-uses-exports/), then [Routing and controllers](/docs/routing-and-controllers/).
 - Hardening a service: [Errors](/docs/errors/), [Health and shutdown](/docs/health-and-shutdown/), [Observability](/docs/observability/), [Security overview](/docs/security/overview/), and [Deployment](/docs/deployment/).
-- Building async workflows: [Events](/docs/events/), [Jobs](/docs/jobs/), [Database and migrations](/docs/database-and-migrations/), and [Cache and locks](/docs/cache-and-locks/).
+- Building async workflows: [Events](/docs/events/), [Jobs](/docs/jobs/), and [Cache and locks](/docs/cache-and-locks/).
 - Looking up a feature: use the [CLI](/docs/cli/), [OpenAPI and routes](/docs/openapi-and-routes/), [Testing](/docs/testing/), or [Glossary](/docs/glossary/).
 
 ## Documentation map
@@ -44,7 +44,7 @@ If you want the scenic route, take the ship around in this order:
 
 ### Runtime capabilities
 
-[Errors](/docs/errors/) · [Database](/docs/database-and-migrations/) · [Cache and locks](/docs/cache-and-locks/) · [Events](/docs/events/) · [Jobs](/docs/jobs/) · [HTTP client](/docs/http-client/) · [Observability](/docs/observability/) · [Health and shutdown](/docs/health-and-shutdown/) · [OpenAPI](/docs/openapi-and-routes/) · [Testing](/docs/testing/)
+[Errors](/docs/errors/) · [Cache and locks](/docs/cache-and-locks/) · [Events](/docs/events/) · [Jobs](/docs/jobs/) · [HTTP client](/docs/http-client/) · [Observability](/docs/observability/) · [Health and shutdown](/docs/health-and-shutdown/) · [OpenAPI](/docs/openapi-and-routes/) · [Testing](/docs/testing/)
 
 ### Security
 

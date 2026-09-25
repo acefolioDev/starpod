@@ -9,8 +9,6 @@ export * from "./serialization/schema";
 export * from "./serialization/wire";
 export * from "./diagnostics/doctor";
 export * from "./diagnostics/audit";
-export * from "./data/database";
-export * from "./data/migrations";
 export * from "./data/cache";
 export * from "./data/locks";
 export * from "./data/idempotency";

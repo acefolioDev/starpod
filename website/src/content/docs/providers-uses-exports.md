@@ -25,10 +25,26 @@ feature A.providers ── exports ──> feature B.imports
 
 ## How Starpod provides it: application providers and `uses`
 
-Put process-wide resources such as a database connection, clock, logger, or HTTP client in `application({ providers })`. A feature lists the tokens it intentionally consumes with `uses`.
+Put process-wide resources such as a Prisma client, clock, logger, or HTTP client in `application({ providers })`. A feature lists the tokens it intentionally consumes with `uses`.
 
 ```ts
-const DATABASE = token<DatabaseConnection>("DATABASE");
+import { provideFactory, token } from "starpod";
+import { PrismaClient } from "@prisma/client";
+
+class PrismaDatabase {
+  readonly client = new PrismaClient();
+
+  initialize() {
+    return this.client.$connect();
+  }
+
+  dispose() {
+    return this.client.$disconnect();
+  }
+}
+
+const DATABASE = token<PrismaDatabase>("DATABASE");
+const database = provideFactory(DATABASE, [], () => new PrismaDatabase());
 
 export const users = pod({
   name: "users",

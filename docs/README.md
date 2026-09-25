@@ -27,7 +27,7 @@ If you want the scenic route, take the ship around in this order:
 - New to Starpod: [Getting started](./getting-started.md), then [Features and pods](./features-and-pods.md) and [Dependency injection](./dependency-injection.md).
 - Designing a larger service: [Project structure](./project-structure.md), [Providers, uses, exports, and imports](./providers-uses-exports.md), then [Routing and controllers](./routing-and-controllers.md).
 - Hardening a service: [Errors](./errors.md), [Health and shutdown](./health-and-shutdown.md), [Observability](./observability.md), [Security overview](./security/overview.md), and [Deployment](./deployment.md).
-- Building async workflows: [Events](./events.md), [Jobs](./jobs.md), [Database and migrations](./database-and-migrations.md), and [Cache and locks](./cache-and-locks.md).
+- Building async workflows: [Events](./events.md), [Jobs](./jobs.md), and [Cache and locks](./cache-and-locks.md).
 - Looking up a feature: use the [CLI](./cli.md), [OpenAPI and routes](./openapi-and-routes.md), [Testing](./testing.md), or [Glossary](./glossary.md).
 
 ## Documentation map
@@ -38,7 +38,7 @@ If you want the scenic route, take the ship around in this order:
 
 ### Runtime capabilities
 
-[Errors](./errors.md) · [Database](./database-and-migrations.md) · [Cache and locks](./cache-and-locks.md) · [Events](./events.md) · [Jobs](./jobs.md) · [HTTP client](./http-client.md) · [Observability](./observability.md) · [Health and shutdown](./health-and-shutdown.md) · [OpenAPI](./openapi-and-routes.md) · [Testing](./testing.md)
+[Errors](./errors.md) · [Cache and locks](./cache-and-locks.md) · [Events](./events.md) · [Jobs](./jobs.md) · [HTTP client](./http-client.md) · [Observability](./observability.md) · [Health and shutdown](./health-and-shutdown.md) · [OpenAPI](./openapi-and-routes.md) · [Testing](./testing.md)
 
 ### Security
 
