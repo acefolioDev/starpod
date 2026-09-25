@@ -118,7 +118,7 @@ return new Response(renderReport(), { headers: { "content-type": type } });
 
 ## Dependency injection
 
-DI is constructor injection with an explicit provider graph. No service locator, decorators, global singletons, or hidden reflection:
+DI is constructor injection with an explicit provider graph. Classes may declare dependencies with `inject` or its readable `needs` alias; `inject` remains the canonical generated spelling. No service locator, decorators, global singletons, or hidden reflection:
 
 ```ts
 export class HelloService {

@@ -12,6 +12,8 @@ No. Elysia remains the router, HTTP server, schema system, and native plugin sur
 
 Explicit static `inject` tuples and `routes(app)` are easy to read, typecheck, test, and run in Bun without reflection or a transform.
 
+For class dependencies, `needs` is also supported as a readable alias. `inject` remains the generator’s canonical spelling.
+
 ## What is a pod compared with a module?
 
 A pod is Starpod’s feature descriptor: name, prefix, controller, providers, and dependency boundaries. It is an in-process composition value, not a process or deployment unit.

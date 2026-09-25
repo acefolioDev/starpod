@@ -59,7 +59,7 @@ describe("Container", () => {
     }
 
     expect(() => new Container([Broken, Clock]).resolve(Broken)).toThrow(
-      "Broken: inject.length (1) must match constructor parameters (0)",
+      "Broken: dependency tuple length (1) must match constructor parameters (0)",
     );
   });
 

@@ -10,6 +10,8 @@ export type InjectionToken<T = unknown> = Constructor<T> | ProviderToken<T>;
 
 export type Injectable<T = unknown> = Constructor<T> & {
   readonly inject?: readonly InjectionToken[];
+  /** Readable alias for inject. If both are defined, they must match. */
+  readonly needs?: readonly InjectionToken[];
   readonly lifetime?: ProviderLifetime;
 };
 
@@ -112,5 +114,4 @@ export function providerLifetime(provider: Provider): ProviderLifetime {
   if ("useValue" in provider) return "singleton";
   return provider.lifetime;
 }
-
 

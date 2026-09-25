@@ -10,7 +10,9 @@ These are the words you will see on the map. The metaphor is optional; the bound
 
 **Feature** — A business boundary represented by a pod; it owns a controller, prefix, and provider scope.
 
-**Inject** — A static tuple such as `static readonly inject = [Clock] as const` that declares constructor dependencies.
+**Inject** — A static tuple such as `static readonly inject = [Clock] as const` that declares class constructor dependencies. `needs` is a fully supported readable alias; if both are present, they must match.
+
+**Needs** — The readable alias for a class’s `inject` dependency tuple. It does not rename factory `inject` arguments or `injectHandler()`.
 
 **Imports** — Feature descriptors whose exported providers are visible to another feature.
 

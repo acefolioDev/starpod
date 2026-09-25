@@ -6,7 +6,7 @@ Picture a workshop. A repair job should receive the wrench, diagnostic reader, a
 
 ## How Starpod provides it
 
-Starpod uses explicit constructor injection. A provider is a class, value, or factory registered in a container. A class declares dependencies with a static `inject` tuple; there is no reflection, service locator, decorator, or hidden global singleton.
+Starpod uses explicit constructor injection. A provider is a class, value, or factory registered in a container. A class declares dependencies with a static `inject` tuple—or the readable `needs` alias. There is no reflection, service locator, decorator, or hidden global singleton.
 
 ```ts
 import { token, provideFactory, provideValue } from "starpod";
@@ -24,6 +24,18 @@ const API_URL = token<string>("API_URL");
 const client = provideFactory(API_URL, [], () => "https://api.example.test");
 const appConfig = provideValue(API_URL, "https://api.example.test");
 ```
+
+`inject` remains the canonical name used by the generator. Classes may use `needs` instead, with identical behavior:
+
+```ts
+export class ReportService {
+  static readonly needs = [Clock] as const;
+
+  constructor(private readonly clock: Clock) {}
+}
+```
+
+If both names are present, Starpod accepts them only when the tuples contain the same tokens in the same order. Factory helpers still use their existing `inject` argument; `injectHandler()` is a separate route-boundary API.
 
 Register classes in `providers`, and use `provideValue`, `provideFactory`, or `provideAsyncFactory` for tokens and resources. An async factory is resolved during bootstrap and its resulting resource is still disposed normally.
 
@@ -70,7 +82,7 @@ Use `disposeBootstrap(server)` or `TestApplication.dispose()` exactly once at th
 
 ## Common mistakes
 
-- Omitting `static readonly inject`; a constructor with dependencies then has no explicit graph declaration.
+- Omitting both `static readonly inject` and `static readonly needs`; a constructor with dependencies then has no explicit graph declaration.
 - Registering a value with `uses` instead of application `providers`.
 - Making a singleton depend on request state.
 - Creating a second database connection in each feature rather than sharing one application provider.

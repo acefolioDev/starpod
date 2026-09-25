@@ -26,11 +26,21 @@ export function isAsyncFactory(provider: Provider): provider is AsyncFactoryProv
 }
 
 export function dependenciesOf(provider: Provider): readonly InjectionToken[] {
-  return typeof provider === "function"
-    ? provider.inject ?? []
-    : "useValue" in provider
-      ? []
-      : provider.inject;
+  if (typeof provider === "function") {
+    const inject = provider.inject;
+    const needs = provider.needs;
+    if (inject !== undefined && needs !== undefined) {
+      if (inject.length !== needs.length || inject.some((token, index) => token !== needs[index])) {
+        throw new GraphError(`${tokenName(provider)}: inject and needs dependency tuples must match`);
+      }
+      return inject;
+    }
+    return inject ?? needs ?? [];
+  }
+
+  return "useValue" in provider
+    ? []
+    : provider.inject;
 }
 
 export function assertConstructorArity(
@@ -41,7 +51,7 @@ export function assertConstructorArity(
   const parameterCount = typeof provider === "function" ? provider.length : undefined;
   if (parameterCount !== undefined && dependencies.length !== parameterCount) {
     throw new GraphError(
-      `${tokenName(token)}: inject.length (${dependencies.length}) must match constructor parameters (${parameterCount})`,
+      `${tokenName(token)}: dependency tuple length (${dependencies.length}) must match constructor parameters (${parameterCount})`,
     );
   }
 }
