@@ -191,20 +191,20 @@ starpod openapi > openapi.json
 Starpod can build a basic OpenAPI 3.1 document from the routes and schemas already registered by Elysia:
 
 ```ts
-import { openApiDocument } from "starpod";
+import { openApiRoutes } from "starpod";
 
 const server = await bootstrap(app);
-server.get("/openapi.json", () => openApiDocument(server, {
+openApiRoutes(server, {
   title: "Users API",
   version: "1.0.0",
   securitySchemes: {
     bearer: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
   },
   security: [{ bearer: [] }],
-}));
+});
 ```
 
-The document preserves native Elysia `detail` metadata, TypeBox-compatible schemas, path/query/header/cookie parameters, request bodies, response status maps, and hidden routes. It also adds a reusable `ErrorPayload` schema and standard Starpod error responses (400, 401, 403, 404, 409, 413, 422, 429, and 500) when a route has not declared those statuses. Pass `standardErrorResponses: []` to omit them. It does not introduce a second route contract; OpenAPI is derived from the Elysia routes that actually exist.
+`openApiRoutes` registers a native `GET /openapi.json` route by default; pass `path` to change it. The route is hidden from the generated document so the spec describes the application API, not the documentation endpoint. The document preserves native Elysia `detail` metadata, TypeBox-compatible schemas, path/query/header/cookie parameters, request bodies, response status maps, and hidden routes. It also adds a reusable `ErrorPayload` schema and standard Starpod error responses (400, 401, 403, 404, 409, 413, 422, 429, and 500) when a route has not declared those statuses. Pass `standardErrorResponses: []` to omit them. It does not introduce a second route contract; OpenAPI is derived from the Elysia routes that actually exist.
 
 ## Errors
 
@@ -379,7 +379,23 @@ const auth = authentication(async (request) => {
 });
 ```
 
-API keys are read from headers only; cookie parsing matches exact names and rejects invalid percent-encoding. Starpod does not invent session storage, token formats, password hashing, or cryptographic protocols.
+API keys are read from headers only; cookie parsing matches exact names and rejects invalid percent-encoding. Starpod does not invent session storage, token formats, or cryptographic protocols.
+
+For password-based identity, use the password service at the account boundary:
+
+```ts
+import { bunPasswordHasher, passwordService } from "starpod";
+
+const passwords = passwordService(bunPasswordHasher(), {
+  minLength: 12,
+  maxLength: 1_024,
+});
+
+const storedHash = await passwords.hash(password);
+const valid = await passwords.verify(password, storedHash);
+```
+
+The Bun adapter uses Argon2id by default. `verify` returns `false` for an invalid password, an invalid stored hash, or a password outside the configured policy; it does not leak hashing errors through the login boundary. Account lockout, breached-password checks, reset flows, MFA, and identity-provider integration remain application-owned.
 
 For cookie-backed sessions, use an application-owned store with Starpod's secure opaque-cookie boundary:
 
@@ -399,7 +415,7 @@ const server = await bootstrap(app, {
 });
 ```
 
-The cookie contains only a random opaque session ID and defaults to `HttpOnly`, `Secure`, `SameSite=Lax`, and `Path=/`. Expired sessions are deleted and cleared. Starpod does not own session persistence, user lookup, password authentication, OAuth, MFA, or token rotation policy.
+The cookie contains only a random opaque session ID and defaults to `HttpOnly`, `Secure`, `SameSite=Lax`, and `Path=/`. Expired sessions are deleted and cleared. Starpod does not own session persistence, user lookup, OAuth, MFA, or token rotation policy.
 
 For resource-level rules, define an explicit policy next to the domain logic:
 
@@ -772,7 +788,7 @@ bun run check
 bun run build
 ```
 
-Framework TypeScript files are intentionally limited to 250 lines. Larger areas are split into focused capability modules so the code remains easy to navigate and review.
+Maintained TypeScript files under `src`, `test`, `scripts`, and `template` are intentionally limited to 250 lines. Larger areas are split into focused capability modules so the code remains easy to navigate and review.
 
 For a project-level architecture report, use the CLI audit command. It exits non-zero when the filesystem conventions or explicit DI graph are invalid, and supports JSON output for CI:
 

@@ -15,6 +15,7 @@ export * from "./http/http";
 export * from "./http/http-client";
 export * from "./http/routes";
 export * from "./http/openapi";
+export * from "./http/openapi-routes";
 export * from "./http/health";
 export * from "./http/etag";
 export * from "./config/config";

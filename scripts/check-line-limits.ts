@@ -4,7 +4,7 @@ const glob = new Bun.Glob("**/*.ts");
 const violations: string[] = [];
 let checked = 0;
 
-for (const directory of ["src", "test"]) {
+for (const directory of ["src", "test", "scripts", "template"]) {
   const root = join(import.meta.dir, "..", directory);
   for await (const relative of glob.scan({ cwd: root, onlyFiles: true })) {
     const path = join(root, relative);
