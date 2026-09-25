@@ -1,11 +1,7 @@
-type GSAPModule = typeof import("gsap");
+import { gsap } from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 
-export async function initLandingAnimations() {
-  const [{ gsap }, { ScrollTrigger }] = await Promise.all([
-    import("gsap"),
-    import("gsap/ScrollTrigger"),
-  ]) as [GSAPModule, typeof import("gsap/ScrollTrigger")];
-
+export function initLandingAnimations() {
   gsap.registerPlugin(ScrollTrigger);
   const root = document.querySelector("main");
   if (!root) return;

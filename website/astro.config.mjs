@@ -7,4 +7,9 @@ export default defineConfig({
   trailingSlash: "always",
   integrations: [sitemap()],
   build: { inlineStylesheets: "auto" },
+  vite: {
+    optimizeDeps: {
+      include: ["gsap", "gsap/ScrollTrigger"],
+    },
+  },
 });
