@@ -1,4 +1,10 @@
-# Route inspection and OpenAPI
+# Route inspection and OpenAPI: let the running app describe itself
+
+## The idea
+
+Documentation drifts when it is written beside the application instead of from it. The most trustworthy route list is the one Elysia actually registered, with the schemas and metadata attached to those routes.
+
+## How Starpod provides it
 
 Because Starpod registers native Elysia routes, it can inspect the routes that actually exist. `routeManifest(server)` returns method, path, and native Elysia `detail` metadata.
 
@@ -47,4 +53,3 @@ This registers native `GET /openapi.json` by default. Pass `path` to change it. 
 ## Production notes
 
 Treat the document as a contract artifact: review it, version it, and add examples/descriptions with Elysia `detail`. OpenAPI generation does not validate authorization, data classification, or backwards compatibility.
-

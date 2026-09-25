@@ -1,4 +1,10 @@
-# Security overview
+# Security overview: trust is earned at the boundary
+
+## The idea
+
+Security is not one lock on the front door. It is a sequence of questions: who is this, what may they do, which tenant owns the data, how fast may they try, and what should we reveal when something fails?
+
+## How Starpod provides it
 
 Starpod provides small, explicit security boundaries: authentication middleware, sessions, password hashing, CORS, CSRF, rate limiting, brute-force state, signed URLs, tenancy context, security headers, and policies. It does not choose your identity provider, authorization model, database isolation, key management, or deployment network policy.
 
@@ -28,4 +34,3 @@ const server = await bootstrap(app, {
 ## Production notes
 
 Use TLS at the edge, rotate secrets, keep clocks synchronized for signed URLs, use shared atomic stores for distributed limits/lockouts, and test failure paths. Starpod’s helpers reduce common mistakes but cannot validate your business authorization or infrastructure.
-

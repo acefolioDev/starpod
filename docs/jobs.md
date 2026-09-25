@@ -1,4 +1,10 @@
-# Jobs, queues, workers, and schedulers
+# Jobs, queues, workers, and schedulers: move work off the request path
+
+## The idea
+
+An HTTP request is a guest at the front desk. It should receive a quick answer, not wait while the kitchen sends an email, rebuilds a search index, and calls three vendors. Jobs move slow or retryable work backstage.
+
+## How Starpod provides it
 
 Jobs are typed work units. Starpod includes an in-memory queue for local work and tests, codec-based envelopes and a `DurableJobDispatcher` boundary for application-owned brokers, `JobWorker` for delivery, and `InMemoryScheduler` for fixed-delay local schedules.
 
@@ -53,4 +59,3 @@ It is not a durable scheduler or cron engine. Use a deployment scheduler when ru
 ## Production notes
 
 The broker owns durability, visibility timeouts, acknowledgement, retries, worker groups, and dead letters. Design handlers to be idempotent and bounded, and monitor queue age, attempts, failures, and shutdown drain behavior.
-

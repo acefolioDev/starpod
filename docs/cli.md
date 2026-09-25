@@ -1,4 +1,10 @@
-# CLI
+# CLI: the launch console
+
+## The idea
+
+The CLI is the launch console for the conventions in your repository. It can create the starter shape, inspect what is wired, and stop a risky deployment before it leaves the hangar.
+
+## How Starpod provides it
 
 The `starpod` executable is included in the package. Run it with `bunx starpod ...` or through project scripts.
 
@@ -38,4 +44,3 @@ starpod openapi > openapi.json
 ## Production notes
 
 Make `seal`, `audit --production --strict`, typecheck, tests, and your deployment-specific checks release gates. Read findings rather than suppressing them; warnings often identify missing ownership decisions.
-

@@ -1,4 +1,10 @@
-# Brute-force protection and signed URLs
+# Brute-force protection and signed URLs: slow the guessing, sign the invitation
+
+## The idea
+
+Brute-force protection makes repeated guesses expensive. A signed URL does the opposite: it makes a specific temporary invitation easy to verify without storing a giant permission object in the link. Both tools need a narrow purpose and an expiry story.
+
+## How Starpod provides it
 
 Use `BruteForceGuard` to track repeated failures at a login or sensitive-operation boundary. The memory store is bounded and process-local; a shared atomic store is needed across replicas.
 

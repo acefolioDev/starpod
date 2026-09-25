@@ -1,4 +1,10 @@
-# Observability
+# Observability: leave breadcrumbs for future you
+
+## The idea
+
+Production is a dark forest when all you have is “it failed”. Logs tell the story, metrics show the shape, and traces connect the scenes. Good observability is a trail of safe breadcrumbs—not a copy of every request and secret.
+
+## How Starpod provides it
 
 Starpod’s observability API is vendor-neutral. Pass a `Logger`, `Tracer`, or `Metrics` adapter to `bootstrap()`/`start()` and keep your vendor SDK in application infrastructure.
 
@@ -41,4 +47,3 @@ You still install/configure the SDK, exporters, resource attributes, sampling, a
 ## Production notes
 
 Use sampling and retention appropriate to your data policy, redact at the adapter boundary, and make telemetry failures non-blocking. Correlate logs, traces, and metrics with request/correlation IDs, but do not make those IDs authorization credentials.
-

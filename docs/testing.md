@@ -1,4 +1,10 @@
-# Testing
+# Testing: rehearse the mission before launch
+
+## The idea
+
+Unit tests inspect one tool at a time. Application tests rehearse the whole scene: routes, validation, request scopes, plugins, errors, and cleanup. You want both kinds of rehearsal before launch.
+
+## How Starpod provides it
 
 `createTestApplication()` boots the application in memory and exposes native `Request`/`Response` integration. It is useful for route tests that should exercise the same composition and error hooks as production.
 
@@ -36,4 +42,3 @@ For a focused unit test, instantiate a service with explicit fakes directly. Use
 ## Production notes
 
 Use deterministic fake providers and an isolated database/schema. Add integration tests against your real database adapter and broker adapter; an in-memory queue or cache cannot prove distributed guarantees.
-

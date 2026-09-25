@@ -1,4 +1,10 @@
-# Rate limiting
+# Rate limiting: protect the queue at the door
+
+## The idea
+
+Rate limiting is crowd control. It protects expensive work and gives honest clients a predictable “try again later” answer. It is not a complete defense against a large network attack.
+
+## How Starpod provides it
 
 `rateLimit()` applies a bounded request decision through a `RateLimitStore`. `MemoryRateLimitStore` is suitable for one process and tests.
 

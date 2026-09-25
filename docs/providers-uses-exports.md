@@ -1,4 +1,8 @@
-# Providers, `uses`, `exports`, and `imports`
+# Providers, `uses`, `exports`, and `imports`: the doors in your house
+
+## The idea
+
+Think of an application as a house. The application owns the shared boiler and electricity. A feature owns its private rooms. `uses` is a request to use something the house owns. `exports` is a doorway a feature intentionally opens. `imports` is the list of doors another feature is allowed to walk through.
 
 These four terms describe who owns a dependency and who may consume it.
 
@@ -13,7 +17,7 @@ feature A.providers ── exports ──> feature B.imports
         └── private dependencies       └── only exported tokens are visible
 ```
 
-## Application providers and `uses`
+## How Starpod provides it: application providers and `uses`
 
 Put process-wide resources such as a database connection, clock, logger, or HTTP client in `application({ providers })`. A feature lists the tokens it intentionally consumes with `uses`.
 
@@ -76,4 +80,3 @@ Use application providers for shared infrastructure. Use feature providers for f
 ## Production notes
 
 These are in-process module boundaries, not network or security boundaries. Keep authorization in the called service/policy, not only in the importing feature. Shared singletons must be safe for concurrent requests and multiple tenants.
-

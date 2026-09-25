@@ -1,4 +1,10 @@
-# Project structure and the architecture seal
+# Project structure and the architecture seal: make the map match the city
+
+## The idea
+
+As a codebase grows, the hard question is not “where can I put this file?” It is “who owns this idea, and who is allowed to depend on it?” A good project structure answers that question before a pull request turns the answer into archaeology.
+
+## How Starpod provides it
 
 Starpod’s default layout separates shared infrastructure from business features:
 
@@ -54,4 +60,3 @@ Use it when several teams or domains need clear ownership, when startup wiring s
 ## Production notes
 
 The seal checks structure and graph consistency, not business correctness, database migrations, permissions, dependency vulnerabilities, or cloud configuration. Run it and `audit` in CI, then add your own tests and deployment policy. See [Deployment](./deployment.md) and [Testing](./testing.md).
-

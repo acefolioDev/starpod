@@ -1,4 +1,10 @@
-# Outbound HTTP client
+# Outbound HTTP client: make the network say “not today” safely
+
+## The idea
+
+Every outbound call can be slow, huge, redirected, unavailable, or aimed at the wrong place. A production client needs boundaries around those possibilities, while still letting you use the familiar `fetch` model.
+
+## How Starpod provides it
 
 `HttpClient` wraps native `fetch` with per-attempt timeouts, bounded body reads, safe retries, structured errors, and optional telemetry. It remains an application provider; it is not a service-discovery or network policy system.
 
@@ -33,4 +39,3 @@ Retries default to `GET`, `HEAD`, and `OPTIONS` and transient status codes. Writ
 ## Production notes
 
 Keep `allowedOrigins` narrow, set timeouts, bound response sizes, and instrument attempts without logging secrets. SSRF defense is layered: validate application input, restrict origins, control redirects, and enforce network egress policy.
-

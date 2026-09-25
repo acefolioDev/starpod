@@ -1,6 +1,12 @@
-# Routing and controllers
+# Routing and controllers: Elysia keeps the steering wheel
 
-Starpod controllers are thin native Elysia route registrars. The `routes(app)` method receives a grouped Elysia instance and must return it. `StarpodElysia` adds typed request identity fields while preserving Elysia’s route API.
+## The idea
+
+Frameworks often make routing feel like filling out paperwork: add metadata here, decorate a method there, and hope another layer generates the route you meant. That can be useful, but it also creates a second language to learn.
+
+## How Starpod provides it
+
+Starpod controllers are thin native Elysia route registrars. The `routes(app)` method receives a grouped Elysia instance and must return it. `StarpodElysia` adds typed request identity fields while preserving Elysia’s route API. If Elysia can do it, your controller can do it.
 
 ```ts
 import { t } from "elysia";
@@ -37,4 +43,3 @@ Use one controller as the HTTP entrypoint for a feature. Keep parsing and transp
 ## Production notes
 
 Validate request input and response output with Elysia schemas. Set a deliberate request-body limit in `bootstrap({ maxRequestBodyBytes })`, handle native streaming cleanup, and use `Native Response` only when its headers/status are intentional. See [OpenAPI](./openapi-and-routes.md) and [Errors](./errors.md).
-

@@ -1,4 +1,10 @@
-# Authentication
+# Authentication: who is knocking?
+
+## The idea
+
+Authentication answers “who are you?” It does not answer “may you edit this invoice?” That second question belongs to authorization. Keeping those questions separate prevents a verified identity from becoming accidental permission.
+
+## How Starpod provides it
 
 Authentication turns a request into a principal. Starpod supplies extractors and an adapter-friendly middleware; your authenticator verifies the credential with your identity provider.
 

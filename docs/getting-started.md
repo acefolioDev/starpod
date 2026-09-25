@@ -1,6 +1,18 @@
-# Getting started
+# Getting started: your first Starpod mission
 
 > **Experimental / working alpha:** Starpod is early-stage. APIs and conventions may change between versions. Pin versions in production, read the changelog before upgrading, and run `starpod audit` and `starpod doctor` in CI. The composition and native-route boundaries are implemented; production databases, brokers, identity providers, and deployment controls remain application-owned.
+
+## The idea
+
+A new web service usually starts as one route and one file. Then the service grows: routes need shared clients, background work needs the same business rules, tests need fakes, and production needs safe startup and shutdown. Starpod gives that growing service a shape early, without taking Elysia away from you.
+
+The first mental model is simple:
+
+```text
+Elysia  = the HTTP engine
+Starpod = the wiring, crew manifest, and safety checklist
+Your app = the mission itself
+```
 
 ## Prerequisites
 
@@ -21,9 +33,9 @@ The initializer creates `src/main.ts`, `src/app.ts`, one `hello` feature, shared
 
 Open `http://localhost:3000/hello/`. The starter controller returns a small JSON response. `src/main.ts` uses `start()` to bootstrap the graph, call native Elysia `listen()`, and install graceful shutdown.
 
-## The first feature
+## The first feature: give one idea a home
 
-A feature has a controller, a pod definition, and application logic. The controller owns native Elysia routes; the pod supplies the URL prefix and providers.
+A feature is a piece of product language that deserves a home: “greeting”, “users”, or “billing”. The controller speaks HTTP, the service speaks business logic, and the pod tells Starpod how the two are assembled. This keeps a feature cohesive without hiding its wiring.
 
 ```ts
 // src/features/greeting/greeting.service.ts
@@ -78,7 +90,7 @@ import { greeting } from "./features/greeting/greeting.pod";
 export const app = application({ features: [greeting] });
 ```
 
-The route is `GET /greeting/:name`. Elysia still owns path matching, validation, response serialization, WebSockets, streaming, and every other native route capability.
+The route is `GET /greeting/:name`. Elysia still owns path matching, validation, response serialization, WebSockets, streaming, and every other native route capability. Starpod is the stage manager, not a second actor taking over the show.
 
 ## Run, test, and inspect
 
@@ -127,4 +139,3 @@ console.log(`listening on http://localhost:${server.server?.port}`);
 Pin `starpod`, `elysia`, and Bun. Keep secrets out of source control and validate environment values at startup. Add readiness checks, request limits, authentication, authorization, logs, metrics, traces, and a deployment-specific database/broker strategy. Starpod supplies boundaries and diagnostics; it does not make those choices for your service.
 
 Next: [Project structure](./project-structure.md).
-

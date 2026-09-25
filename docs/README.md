@@ -2,11 +2,27 @@
 
 > **Experimental / working alpha:** Starpod is early-stage. APIs and conventions may change between versions. Pin Starpod and Bun versions in production, read the changelog before upgrades, and run `starpod audit` and `starpod doctor` in CI.
 
+Welcome aboard. Think of an Elysia application as a fast ship: Elysia is the engine and steering wheel, while Starpod gives the crew named stations, supply routes, safety checks, and a launch checklist. You still steer the ship with Elysia; Starpod makes a growing codebase easier to navigate.
+
 Starpod is an enterprise-friendly structure for Elysia applications on Bun. It adds explicit constructor dependency injection, feature boundaries called **pods**, provider lifetimes, cross-cutting HTTP boundaries, and architecture checks. Routes remain native Elysia routes. There are no decorators and no parallel router.
 
 The core composition model, native controller routes, request scopes, typed configuration, structured errors, lifecycle handling, health routes, route inspection, and vendor-neutral observability boundaries are solid today. Database drivers, durable queues and event brokers, distributed cache and rate limiting, telemetry SDK/exporter setup, identity providers, and deployment hardening remain application-owned adapters or planned work. Treat the framework as a set of explicit boundaries, not a guarantee that your application is secure or distributed by default.
 
 ## Choose a path
+
+This guide teaches the “why” before the “how”. Every page starts with the idea a feature solves, then shows Starpod’s small mechanism for solving it, and ends with the boundary Starpod deliberately leaves to your application.
+
+## The Starpod tour
+
+If you want the scenic route, take the ship around in this order:
+
+1. **Launchpad** — [Getting started](./getting-started.md): get a tiny service in orbit.
+2. **Neighborhoods** — [Features and pods](./features-and-pods.md): give each product idea a home.
+3. **Toolbelt** — [Dependency injection](./dependency-injection.md): bring collaborators in openly.
+4. **Airlocks** — [Providers and boundaries](./providers-uses-exports.md): decide what may cross a feature boundary.
+5. **Bridge** — [Routing and controllers](./routing-and-controllers.md): let native Elysia handle HTTP.
+6. **Flight systems** — [Errors](./errors.md), [health](./health-and-shutdown.md), and [observability](./observability.md).
+7. **Fleet operations** — [Security](./security/overview.md), [testing](./testing.md), and [deployment](./deployment.md).
 
 - New to Starpod: [Getting started](./getting-started.md), then [Features and pods](./features-and-pods.md) and [Dependency injection](./dependency-injection.md).
 - Designing a larger service: [Project structure](./project-structure.md), [Providers, uses, exports, and imports](./providers-uses-exports.md), then [Routing and controllers](./routing-and-controllers.md).

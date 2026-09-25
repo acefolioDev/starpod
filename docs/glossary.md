@@ -1,4 +1,6 @@
-# Glossary
+# Glossary: the Starpod map
+
+These are the words you will see on the map. The metaphor is optional; the boundaries are not.
 
 **Application** — The composition value returned by `application({ features, providers, plugins })`.
 
@@ -29,4 +31,3 @@
 **Native Elysia** — Elysia’s actual route, hook, schema, WebSocket, streaming, and plugin API, preserved by Starpod.
 
 **Production boundary** — The line between framework-provided composition/HTTP primitives and application-owned infrastructure, security policy, data, and deployment guarantees.
-

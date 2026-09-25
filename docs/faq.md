@@ -1,4 +1,8 @@
-# FAQ
+# FAQ: questions from the curious crew
+
+## The short version
+
+Starpod is deliberately a helpful layer around Elysia, not a replacement for it. If you remember one sentence, remember this: **Elysia handles the request; Starpod handles the structure around the request.**
 
 ## Is Starpod a replacement for Elysia?
 
@@ -39,4 +43,3 @@ It checks the documented project shape, wiring, imports/exports, route registrar
 ## Is the alpha API stable?
 
 No. Pin versions, read the changelog, and run `starpod audit` and `starpod doctor` in CI.
-

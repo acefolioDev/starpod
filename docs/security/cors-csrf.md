@@ -1,4 +1,10 @@
-# CORS and CSRF
+# CORS and CSRF: two guards with different jobs
+
+## The idea
+
+Two guards are often confused. **CORS** asks which browser origins may read a response. **CSRF** asks whether a cookie-backed state change was intentionally made by your application. One is a browser reading rule; the other is a request-intent check.
+
+## How Starpod provides it
 
 **CORS** controls which browser origins may read cross-origin responses. **CSRF** protects cookie-authenticated state changes from unwanted browser requests. They solve different problems.
 

@@ -1,4 +1,10 @@
-# Sessions
+# Sessions: remember a browser without trusting its memory
+
+## The idea
+
+A browser needs a small “remember me” token, but the browser should not carry your whole user record or your permissions. Give it an opaque ticket; keep the real session server-side.
+
+## How Starpod provides it
 
 `sessions()` provides secure opaque-cookie plumbing around an application-owned `SessionStore`. The cookie contains a random session ID, not the session object.
 
@@ -31,4 +37,3 @@ Cookie defaults are `HttpOnly`, `Secure`, `SameSite=Lax`, and `Path=/`. Expired 
 ## Production notes
 
 The store owns persistence, atomic deletion, revocation, idle/absolute expiry, session rotation, and multi-instance consistency. Add CSRF protection for cookie-authenticated state changes and never log session IDs.
-

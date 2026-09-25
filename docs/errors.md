@@ -1,4 +1,10 @@
-# Errors and native responses
+# Errors and native responses: speak clearly when a request fails
+
+## The idea
+
+An error is part of your API’s conversation with its caller. “Something went wrong” is honest but not very useful; a stable code, safe message, and request ID give the caller a next move and the operator a thread to follow.
+
+## How Starpod provides it
 
 Throw `StarpodError` (or its helpers) for expected HTTP failures. Bootstrap serializes it into a stable payload and keeps unexpected details out of production responses.
 
@@ -49,4 +55,3 @@ Use native responses for downloads, redirects, SSE, and streams. Use `StarpodErr
 ## Production notes
 
 Map errors to stable codes and document them in OpenAPI. Log internal causes through a controlled logger, not in the response. The serializer is a safety boundary, not a domain error taxonomy or a replacement for redaction in your own logs.
-

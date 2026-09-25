@@ -1,4 +1,10 @@
-# Tenancy
+# Tenancy: keep neighborhoods from sharing mail
+
+## The idea
+
+In a multi-tenant system, “the current customer” is part of almost every decision. A tenant ID floating around in an untyped header is easy to forget; a tenant context makes the decision visible, but it still must be checked against identity and data access.
+
+## How Starpod provides it
 
 `tenancy()` resolves an explicit tenant from a request and exposes a typed `tenant` value to native Elysia handlers. It does not automatically isolate database rows or authorize cross-tenant access.
 
@@ -33,4 +39,3 @@ Use `tenantKey(tenant.id, key)` for namespaced cache/lock keys and `tenantCache(
 ## Production notes
 
 Resolve tenants from a verified identity or trusted routing layer, enforce membership and resource access, isolate database queries, and carry tenant IDs explicitly into async work. Test that cross-tenant reads and writes fail.
-

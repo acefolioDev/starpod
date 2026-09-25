@@ -1,4 +1,10 @@
-# Deployment
+# Deployment: turn the local ship into a fleet member
+
+## The idea
+
+Local development asks, “does it run?” Production asks, “can it restart, drain, scale, observe, and keep secrets safe?” Deployment is the set of decisions that turns one healthy process into a responsible fleet member.
+
+## How Starpod provides it
 
 Starpod targets Bun ESM applications. A minimal production shape is:
 
@@ -45,4 +51,3 @@ Starpod provides explicit composition, DI/lifecycle ownership, native HTTP hooks
 - Running migrations independently on every startup without a shared lock.
 - Assuming container non-root settings replace application authorization.
 - Deploying an unpinned alpha dependency.
-

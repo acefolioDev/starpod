@@ -1,4 +1,10 @@
-# Cache and locks
+# Cache and locks: shortcuts and one-at-a-time signs
+
+## The idea
+
+A cache is a shortcut, not the source of truth. A lock is a “one person at a time” sign, not a magic force field. Both are useful precisely because their limits are visible.
+
+## How Starpod provides it
 
 Caching is explicit; Starpod never silently caches route results. `MemoryCache` is useful for development and one-process workloads. It supports TTLs, bounded LRU storage, namespaces, tags, and concurrent-loader coalescing.
 
@@ -39,4 +45,3 @@ Use locks for stampede protection or a short-lived local critical section. A dis
 ## Production notes
 
 Implement `CacheStore` and `LockStore` with a shared system when replicas need coordination. Preserve `getOrSet` stampede protection atomically. Plan invalidation, outages, eviction, and observability; Starpod does not provide distributed consistency.
-

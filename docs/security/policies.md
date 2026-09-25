@@ -1,4 +1,10 @@
-# Policies
+# Policies: turn permission into a named decision
+
+## The idea
+
+Roles are coarse labels. Real authorization asks questions like “can this editor update this post in this tenant?” A policy names that decision and puts the resource in the room with the principal.
+
+## How Starpod provides it
 
 Policies are explicit resource-level authorization functions. `definePolicy()` gives each rule a typed principal and resource and throws `FORBIDDEN` when a rule returns false.
 
@@ -26,4 +32,3 @@ Use policies when access depends on both identity and resource state. Keep them 
 ## Production notes
 
 Policies are application code. Review them like business-critical code, test allow and deny cases, and decide whether unauthorized and not-found should be indistinguishable for your threat model.
-

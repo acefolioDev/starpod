@@ -1,4 +1,10 @@
-# Typed configuration
+# Typed configuration: turn environment strings into decisions
+
+## The idea
+
+Environment variables arrive as strings, but your application needs decisions: a port is a number, a timeout has a unit, a URL has a protocol, and a database password must not appear in logs. Configuration is the boundary where untrusted process input becomes typed application state.
+
+## How Starpod provides it
 
 `defineConfig()` parses a definition at startup. The `env` helpers make required values, defaults, ranges, URLs, durations, and secrets explicit.
 

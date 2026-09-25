@@ -1,4 +1,10 @@
-# Plugins and bootstrap configuration
+# Plugins and bootstrap configuration: add crew without hiding the ship
+
+## The idea
+
+An extension should be easy to answer two questions about: “What does it install?” and “When does it run?” Starpod keeps both answers visible. A reusable plugin is a named crew member; a bootstrap callback is a one-time adjustment made at launch.
+
+## How Starpod provides it
 
 Starpod has two explicit extension points. A **Starpod plugin** is named and can own providers plus a native Elysia `configure` function. The `bootstrap({ configure })` callback is an unnamed, one-off application hook.
 
@@ -39,4 +45,3 @@ Use `configure` for local application wiring such as health routes, OpenAPI rout
 ## Production notes
 
 Starpod does not validate the security or correctness of a plugin’s native Elysia code. Keep plugin order reviewable, test the composed app, and avoid plugins that log credentials or request bodies.
-

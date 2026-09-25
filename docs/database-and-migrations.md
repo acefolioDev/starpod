@@ -1,4 +1,10 @@
-# Database and migrations
+# Database and migrations: make data ownership boring
+
+## The idea
+
+Your database is the town archive: valuable, shared, and not something every request should open a new copy of. The hard parts are usually lifecycle, readiness, transactions, and coordinated schema change—not hiding the SQL behind a magical framework.
+
+## How Starpod provides it
 
 Starpod does not bundle an ORM or hide a driver. `DatabaseConnection` is a small lifecycle boundary for an application-owned client: connect, close, ping, and transaction delegation.
 
@@ -41,4 +47,3 @@ Migration IDs are sorted, duplicate or unknown applied IDs are rejected, pending
 ## Production notes
 
 Choose pool sizing, TLS, credentials, transaction isolation, backups, replicas, schema ownership, and lock semantics in the driver/deployment layer. `ping()` supports readiness but should be cheap and bounded. Treat migration rollback as an application-specific data operation, not a universal undo guarantee.
-

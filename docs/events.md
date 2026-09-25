@@ -1,4 +1,10 @@
-# Events
+# Events: announce facts, don’t summon strangers
+
+## The idea
+
+When a user signs up, several things may matter: welcome email, analytics, search indexing, and billing. One function calling all of them becomes a tangled telephone tree. An event says, “this fact happened”; listeners decide whether they care.
+
+## How Starpod provides it
 
 Events decouple a fact from the code that reacts to it. Starpod provides typed in-process delivery plus explicit boundaries for serialized delivery and an outbox. It does not ship a broker.
 
@@ -57,4 +63,3 @@ If publishing succeeds but marking the record fails, the event may be delivered 
 ## Production notes
 
 Choose a broker, delivery policy, schema compatibility policy, retry/dead-letter strategy, and atomic idempotency store. Tenant IDs can be carried explicitly, but consumers must still select the right data and authorization boundary.
-

@@ -1,4 +1,10 @@
-# Dependency injection
+# Dependency injection: bring the right tools to the work
+
+## The idea
+
+Picture a workshop. A repair job should receive the wrench, diagnostic reader, and spare parts it needs. It should not wander through a global cupboard, guess where tools live, or secretly create a new database connection. That is dependency injection: give an object its collaborators from the outside.
+
+## How Starpod provides it
 
 Starpod uses explicit constructor injection. A provider is a class, value, or factory registered in a container. A class declares dependencies with a static `inject` tuple; there is no reflection, service locator, decorator, or hidden global singleton.
 
@@ -21,9 +27,9 @@ const appConfig = provideValue(API_URL, "https://api.example.test");
 
 Register classes in `providers`, and use `provideValue`, `provideFactory`, or `provideAsyncFactory` for tokens and resources. An async factory is resolved during bootstrap and its resulting resource is still disposed normally.
 
-## Lifetimes
+## Lifetimes: who owns the tool?
 
-Providers are singleton by default. A singleton belongs to its application or feature container. Set `static readonly lifetime = "request" as const` for one instance per HTTP request, or `"transient"` for a new instance per resolution.
+Providers are singleton by default. A singleton is a shared workshop tool. A request-scoped provider is a clipboard that belongs to one visitor. A transient provider is a fresh disposable tool for one job. A singleton belongs to its application or feature container. Set `static readonly lifetime = "request" as const` for one instance per HTTP request, or `"transient"` for a new instance per resolution.
 
 ```ts
 export class RequestAudit {
@@ -72,4 +78,3 @@ Use `disposeBootstrap(server)` or `TestApplication.dispose()` exactly once at th
 ## Production notes
 
 DI manages object ownership and startup order; it does not pool connections, retry transactions, or make a provider thread-safe. Choose lifetimes based on actual state and concurrency. For external resources, make close behavior explicit and test disposal.
-

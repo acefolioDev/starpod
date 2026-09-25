@@ -1,4 +1,10 @@
-# Health and graceful shutdown
+# Health and graceful shutdown: enter and leave like a good guest
+
+## The idea
+
+“The process is alive” and “the process should receive traffic” are different questions. Likewise, shutdown is not a crash: a good service first stops accepting new work, lets current work finish, then closes its resources.
+
+## How Starpod provides it
 
 `healthRoutes()` registers liveness and readiness routes. Liveness answers whether the process is running. Readiness checks dependencies and returns `503` when a check fails or shutdown has begun.
 
@@ -29,4 +35,3 @@ Defaults are `/health/live` and `/health/ready`; both can be changed. Checks rec
 ## Production notes
 
 Configure orchestrator grace periods longer than the expected drain, use readiness to remove instances from traffic, and make checks cheap and bounded. Health routes are not authentication or a full dependency-monitoring system; protect detailed diagnostics and keep responses minimal.
-
