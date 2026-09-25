@@ -1,7 +1,6 @@
 import {
   GraphError,
   providerLifetime,
-  providerToken,
   type InjectionToken,
   type Provider,
 } from "./providers";
@@ -15,18 +14,24 @@ import {
 } from "./helpers";
 import type { ContainerImport } from "./container";
 
-export type ResolverContainer = {
+type ResolverContainer = {
   readonly providers: Map<InjectionToken, Provider>;
   readonly instances: Map<InjectionToken, unknown>;
   readonly pending: Map<InjectionToken, Promise<unknown>>;
   readonly creationOrder: InjectionToken[];
-  readonly parent?: ResolverContainer;
+  readonly parent?: object;
   readonly isRequestScope: boolean;
   readonly imports: readonly ContainerImport[];
-  readonly disposed: boolean;
+  readonly isDisposed: () => boolean;
 };
 
-export function buildSync<T>(container: ResolverContainer, token: InjectionToken<T>, stack: InjectionToken[], transientScope = container): T {
+const states = new WeakMap<object, ResolverContainer>();
+
+export function registerContainer(owner: object, state: ResolverContainer) {
+  states.set(owner, state);
+}
+
+export function buildSync<T>(container: object, token: InjectionToken<T>, stack: InjectionToken[], transientScope = container): T {
   const owner = ownerOf(container, token);
   if (!owner) {
     const imported = importedOwnerOf(container, token);
@@ -35,7 +40,7 @@ export function buildSync<T>(container: ResolverContainer, token: InjectionToken
   }
   const provider = requireProvider(owner, token, stack);
   const lifetime = providerLifetime(provider);
-  assertRequestScope(lifetime, transientScope.isRequestScope, token);
+  assertRequestScope(lifetime, stateOf(transientScope).isRequestScope, token);
   const cache = cacheFor(lifetime, owner, transientScope);
   const cached = readCache(cache, token);
   if (cached.found) return cached.value as T;
@@ -48,13 +53,17 @@ export function buildSync<T>(container: ResolverContainer, token: InjectionToken
   const args = dependencies.map((dependency) => buildSync(container, dependency, next, dependencyScope));
   const instance = constructSync(provider, args) as T;
   if (cache) {
-    cache.instances.set(token, instance);
-    cache.creationOrder.push(token);
-  } else rememberTransient(transientScope.instances, transientScope.creationOrder, instance);
+    const state = stateOf(cache);
+    state.instances.set(token, instance);
+    state.creationOrder.push(token);
+  } else {
+    const state = stateOf(transientScope);
+    rememberTransient(state.instances, state.creationOrder, instance);
+  }
   return instance;
 }
 
-export async function buildAsync<T>(container: ResolverContainer, token: InjectionToken<T>, stack: InjectionToken[], transientScope = container): Promise<T> {
+export async function buildAsync<T>(container: object, token: InjectionToken<T>, stack: InjectionToken[], transientScope = container): Promise<T> {
   const owner = ownerOf(container, token);
   if (!owner) {
     const imported = importedOwnerOf(container, token);
@@ -63,11 +72,11 @@ export async function buildAsync<T>(container: ResolverContainer, token: Injecti
   }
   const provider = requireProvider(owner, token, stack);
   const lifetime = providerLifetime(provider);
-  assertRequestScope(lifetime, transientScope.isRequestScope, token);
+  assertRequestScope(lifetime, stateOf(transientScope).isRequestScope, token);
   const cache = cacheFor(lifetime, owner, transientScope);
   const cached = readCache(cache, token);
   if (cached.found) return cached.value as T;
-  const pending = cache?.pending.get(token);
+  const pending = cache ? stateOf(cache).pending.get(token) : undefined;
   if (pending) return pending as Promise<T>;
   const dependencies = dependenciesOf(provider);
   assertDependencies(container, token, lifetime, dependencies);
@@ -75,21 +84,23 @@ export async function buildAsync<T>(container: ResolverContainer, token: Injecti
   const work = constructAsync(container, provider, token, stack, dependencyScope);
   if (!cache) {
     const instance = await work;
-    rememberTransient(transientScope.instances, transientScope.creationOrder, instance);
+    const state = stateOf(transientScope);
+    rememberTransient(state.instances, state.creationOrder, instance);
     return instance as T;
   }
-  cache.pending.set(token, work);
+  const state = stateOf(cache);
+  state.pending.set(token, work);
   try {
     const instance = await work;
-    cache.instances.set(token, instance);
-    cache.creationOrder.push(token);
+    state.instances.set(token, instance);
+    state.creationOrder.push(token);
     return instance as T;
   } finally {
-    cache.pending.delete(token);
+    state.pending.delete(token);
   }
 }
 
-export function validateToken(container: ResolverContainer, token: InjectionToken, stack: InjectionToken[], requestScope: boolean) {
+export function validateToken(container: object, token: InjectionToken, stack: InjectionToken[], requestScope: boolean) {
   const owner = ownerOf(container, token);
   if (!owner) {
     const imported = importedOwnerOf(container, token);
@@ -114,24 +125,26 @@ function constructSync<T>(provider: Provider, args: unknown[]) {
       : (provider.useFactory as (...args: unknown[]) => T)(...args);
 }
 
-async function constructAsync<T>(container: ResolverContainer, provider: Provider, token: InjectionToken, stack: InjectionToken[], transientScope: ResolverContainer): Promise<T> {
-  assertConstructorArity(provider, token, dependenciesOf(provider));
+async function constructAsync<T>(container: object, provider: Provider, token: InjectionToken, stack: InjectionToken[], transientScope: object): Promise<T> {
+  const dependencies = dependenciesOf(provider);
+  assertConstructorArity(provider, token, dependencies);
   const next = [...stack, token];
-  const args = await Promise.all(dependenciesOf(provider).map((dependency) => buildAsync(container, dependency, next, transientScope)));
+  const args = await Promise.all(dependencies.map((dependency) => buildAsync(container, dependency, next, transientScope)));
   if (typeof provider === "function") return new (provider as unknown as new (...args: unknown[]) => T)(...args);
   if ("useValue" in provider) return provider.useValue as T;
   return (provider.useFactory as (...args: unknown[]) => Promise<T>)(...args);
 }
 
-function requireProvider(owner: ResolverContainer, token: InjectionToken, stack: InjectionToken[]) {
-  if (owner.disposed) throw new GraphError(`${tokenName(token)} provider belongs to a disposed container`);
+function requireProvider(owner: object, token: InjectionToken, stack: InjectionToken[]) {
+  const state = stateOf(owner);
+  if (state.isDisposed()) throw new GraphError(`${tokenName(token)} provider belongs to a disposed container`);
   if (stack.includes(token)) throw new GraphError(`circular dependency: ${[...stack, token].map(tokenName).join(" -> ")}`);
-  const provider = owner.providers.get(token);
+  const provider = state.providers.get(token);
   if (!provider) throw new GraphError(`${tokenName(token)} provider disappeared`);
   return provider;
 }
 
-function assertDependencies(container: ResolverContainer, token: InjectionToken, lifetime: ReturnType<typeof providerLifetime>, dependencies: readonly InjectionToken[]) {
+function assertDependencies(container: object, token: InjectionToken, lifetime: ReturnType<typeof providerLifetime>, dependencies: readonly InjectionToken[]) {
   assertNoRequestDependency(token, lifetime, dependencies, (dependency) => providerOf(container, dependency));
 }
 
@@ -139,38 +152,49 @@ function assertRequestScope(lifetime: ReturnType<typeof providerLifetime>, reque
   if (lifetime === "request" && !requestScope) throw new GraphError(`${tokenName(token)} is request-scoped and can only be resolved inside a request scope`);
 }
 
-function cacheFor(lifetime: ReturnType<typeof providerLifetime>, owner: ResolverContainer, scope: ResolverContainer) {
+function cacheFor(lifetime: ReturnType<typeof providerLifetime>, owner: object, scope: object) {
   return lifetime === "singleton" ? owner : lifetime === "request" ? scope : undefined;
 }
 
-function readCache(cache: ResolverContainer | undefined, token: InjectionToken) {
+function readCache(cache: object | undefined, token: InjectionToken) {
   if (!cache) return { found: false } as const;
-  const value = cache.instances.get(token);
-  return value !== undefined || cache.instances.has(token)
+  const state = stateOf(cache);
+  const value = state.instances.get(token);
+  return value !== undefined || state.instances.has(token)
     ? { found: true, value } as const
     : { found: false } as const;
 }
 
-function ownerOf(container: ResolverContainer, token: InjectionToken): ResolverContainer | undefined {
-  if (container.providers.has(token)) return container;
-  return container.parent ? ownerOf(container.parent, token) : undefined;
+function ownerOf(container: object, token: InjectionToken): object | undefined {
+  const state = stateOf(container);
+  if (state.providers.has(token)) return container;
+  return state.parent ? ownerOf(state.parent, token) : undefined;
 }
 
-function providerOf(container: ResolverContainer, token: InjectionToken) {
+function providerOf(container: object, token: InjectionToken) {
   const owner = ownerOf(container, token) ?? importedOwnerOf(container, token);
-  return owner?.providers.get(token);
+  return owner ? stateOf(owner).providers.get(token) : undefined;
 }
 
-function importedOwnerOf(container: ResolverContainer, token: InjectionToken): ResolverContainer | undefined {
+function importedOwnerOf(container: object, token: InjectionToken): object | undefined {
   for (const scope of scopeChain(container)) {
-    const link = scope.imports.find((candidate) => candidate.tokens.has(token));
-    if (link) return link.container as unknown as ResolverContainer;
+    const link = stateOf(scope).imports.find((candidate) => candidate.tokens.has(token));
+    if (link) return link.container;
   }
   return undefined;
 }
 
-function* scopeChain(container: ResolverContainer): Iterable<ResolverContainer> {
-  for (let scope: ResolverContainer | undefined = container; scope; scope = scope.parent) yield scope;
+function* scopeChain(container: object): Iterable<object> {
+  for (let scope: object | undefined = container; scope;) {
+    yield scope;
+    scope = stateOf(scope).parent;
+  }
+}
+
+function stateOf(container: object) {
+  const state = states.get(container);
+  if (!state) throw new GraphError("container is not registered");
+  return state;
 }
 
 function missing(token: InjectionToken) {

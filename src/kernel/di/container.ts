@@ -9,7 +9,7 @@ import {
   tokenName,
 } from "./helpers";
 import { disposeContainer } from "./dispose";
-import { buildAsync, buildSync, validateToken } from "./resolution";
+import { buildAsync, buildSync, registerContainer, validateToken } from "./resolution";
 
 export type ContainerImport = {
   readonly container: Container;
@@ -17,12 +17,12 @@ export type ContainerImport = {
 };
 
 export class Container {
-  readonly providers = new Map<InjectionToken, Provider>();
-  readonly instances = new Map<InjectionToken, unknown>();
-  readonly pending = new Map<InjectionToken, Promise<unknown>>();
-  readonly creationOrder: InjectionToken[] = [];
+  private readonly providers = new Map<InjectionToken, Provider>();
+  private readonly instances = new Map<InjectionToken, unknown>();
+  private readonly pending = new Map<InjectionToken, Promise<unknown>>();
+  private readonly creationOrder: InjectionToken[] = [];
   private readonly initializedTokens = new Set<InjectionToken>();
-  disposed = false;
+  private disposed = false;
   private disposing: Promise<void> | undefined;
   private initializing: Promise<void> | undefined;
   constructor(
@@ -32,6 +32,16 @@ export class Container {
     readonly imports: readonly ContainerImport[] = [],
   ) {
     for (const provider of providers) this.register(provider);
+    registerContainer(this, {
+      providers: this.providers,
+      instances: this.instances,
+      pending: this.pending,
+      creationOrder: this.creationOrder,
+      parent,
+      isRequestScope,
+      imports,
+      isDisposed: () => this.disposed,
+    });
   }
   register(...providers: readonly Provider[]) {
     for (const provider of providers) {
