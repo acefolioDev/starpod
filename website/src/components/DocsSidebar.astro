@@ -1,0 +1,57 @@
+---
+import { getCollection } from "astro:content";
+
+const { pathname } = Astro.props;
+const entries = await getCollection("docs");
+const sections = [
+  { id: "foundations", label: "Foundations", index: "01" },
+  { id: "runtime", label: "Runtime", index: "02" },
+  { id: "security", label: "Security", index: "03" },
+  { id: "operations", label: "Operations", index: "04" },
+] as const;
+
+const hrefFor = (id: string) => id === "index" ? "/docs/" : `/docs/${id}/`;
+const isActive = (href: string) => pathname === href || pathname === href.slice(0, -1);
+const overview = entries.find((entry) => entry.id === "index");
+---
+<aside class="docs-sidebar" aria-label="Documentation navigation">
+  <div class="docs-sidebar-head">
+    <span>DOCS / INDEX</span>
+    <span>{String(entries.length).padStart(2, "0")} PAGES</span>
+  </div>
+
+  <details class="docs-mobile-nav">
+    <summary>Browse documentation <span aria-hidden="true">＋</span></summary>
+    <nav>
+      {overview && <a href="/docs/" aria-current={isActive("/docs/") ? "page" : undefined}>Overview</a>}
+      {sections.map((section) => (
+        <div class="docs-nav-section">
+          <p><span>{section.index}</span>{section.label}</p>
+          {entries
+            .filter((entry) => entry.data.section === section.id && entry.id !== "index")
+            .sort((a, b) => a.data.order - b.data.order)
+            .map((entry) => {
+              const href = hrefFor(entry.id);
+              return <a href={href} aria-current={isActive(href) ? "page" : undefined}>{entry.data.label}</a>;
+            })}
+        </div>
+      ))}
+    </nav>
+  </details>
+
+  <nav class="docs-desktop-nav">
+    {overview && <a class="docs-overview-link" href="/docs/" aria-current={isActive("/docs/") ? "page" : undefined}>Overview <span>↗</span></a>}
+    {sections.map((section) => (
+      <div class="docs-nav-section">
+        <p><span>{section.index}</span>{section.label}</p>
+        {entries
+          .filter((entry) => entry.data.section === section.id && entry.id !== "index")
+          .sort((a, b) => a.data.order - b.data.order)
+          .map((entry) => {
+            const href = hrefFor(entry.id);
+            return <a href={href} aria-current={isActive(href) ? "page" : undefined}>{entry.data.label}</a>;
+          })}
+      </div>
+    ))}
+  </nav>
+</aside>

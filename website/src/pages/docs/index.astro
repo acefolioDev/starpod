@@ -1,0 +1,11 @@
+---
+import { getEntry, render } from "astro:content";
+import DocsLayout from "../../layouts/DocsLayout.astro";
+
+const entry = await getEntry("docs", "index");
+if (!entry) throw new Error("Documentation index is missing");
+const { Content } = await render(entry);
+---
+<DocsLayout {...entry.data} showAlpha={false}>
+  <Content />
+</DocsLayout>

@@ -1,0 +1,10 @@
+---
+const { label = "Working alpha", variant = "alpha" } = Astro.props;
+---
+<aside class:list={["doc-callout", `doc-callout-${variant}`]} role="note">
+  <span class="doc-callout-bar" aria-hidden="true"></span>
+  <div>
+    <p>{label}</p>
+    <div class="doc-callout-body"><slot /></div>
+  </div>
+</aside>

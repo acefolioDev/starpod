@@ -1,5 +1,5 @@
 {
-  "name": "starpod-landing",
+  "name": "starpod-website",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
     "typecheck": "astro check"
   },
   "dependencies": {
+    "@astrojs/sitemap": "^3.7.4",
     "astro": "^5.13.0",
     "gsap": "^3.13.0"
   },

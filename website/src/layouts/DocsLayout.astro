@@ -1,0 +1,62 @@
+---
+import Header from "../components/Header.astro";
+import DocsSidebar from "../components/DocsSidebar.astro";
+import DocCallout from "../components/DocCallout.astro";
+import "../styles/tokens.css";
+import "../styles/global.css";
+import "../styles/docs.css";
+
+const {
+  title,
+  description,
+  section,
+  showAlpha = true,
+} = Astro.props;
+const pageTitle = `${title} — Starpod Docs`;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#0b0d12" />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={new URL("/og.svg", Astro.site)} />
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content={canonical} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{pageTitle}</title>
+  </head>
+  <body class="docs-body">
+    <a class="skip-link" href="#doc-content">Skip to documentation</a>
+    <Header />
+    <div class="docs-shell">
+      <DocsSidebar pathname={Astro.url.pathname} />
+      <main class="docs-main" id="doc-content">
+        <div class="docs-route-meta">
+          <span>STARPOD / DOCS</span>
+          <span>{section.toUpperCase()}</span>
+        </div>
+        <article class="doc-prose">
+          <p class="section-kicker">{section} / reference</p>
+          <h1>{title}</h1>
+          <p class="doc-description">{description}</p>
+          {showAlpha && (
+            <DocCallout>
+              Starpod is early-stage. Pin Starpod and Bun versions, read the changelog before upgrades, and run <code>starpod audit</code> and <code>starpod doctor</code> in CI.
+            </DocCallout>
+          )}
+          <slot />
+        </article>
+        <footer class="docs-footer">
+          <span>STARPOD / WORKING ALPHA</span>
+          <a href="https://github.com/acefolioDev/starpod" target="_blank" rel="noreferrer">Source on GitHub ↗</a>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>

@@ -2,6 +2,8 @@
 
 An enterprise-friendly structure for Elysia applications: explicit constructor DI, feature boundaries, and native Elysia routes in controllers. TypeScript only. No decorators.
 
+**Documentation:** [starpod.dev/docs](https://starpod.dev/docs/) · source: [`/website`](./website/)
+
 > Current status: working alpha. The core runtime, explicit DI, native routes, named native plugin boundary, configuration, error handling, health checks, adapter-based authentication and sessions, password hashing, brute-force protection, signed URLs, optional tenant context, request/correlation identity, request logging, bounded development inspection, vendor-neutral tracing and metrics boundaries, optional OpenTelemetry tracing/metrics bridges, security headers, CSRF protection for cookie-authenticated routes, ETags for finite responses, database lifecycle/transaction boundaries with database events, deterministic migration orchestration, typed in-process and durable-boundary events/jobs, cache primitives, rate-limit primitives, an origin-restricted outbound HTTP client, and CLI diagnostics are implemented. Vendor database adapters, durable queue/event infrastructure, distributed caching/rate limiting, OpenTelemetry SDK/exporter setup, and application deployment hardening remain application-owned or planned. Package release contents are covered by build, type, clean-consumer, scaffold, audit, doctor, and pack smoke checks.
 
 ```bash
