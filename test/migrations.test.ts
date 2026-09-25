@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { MigrationRunner, type MigrationStore } from "../src/kernel/migrations";
+import { MigrationRunner, type MigrationStore } from "../src/kernel/data/migrations";
 
 function storeFor(appliedIds: string[] = []) {
   const events: string[] = [];

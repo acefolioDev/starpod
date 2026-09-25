@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { definePolicy } from "../src/kernel/policy";
+import { definePolicy } from "../src/kernel/security/policy";
 
 type User = { readonly id: string; readonly roles: readonly string[] };
 type Post = { readonly ownerId: string; readonly published: boolean };

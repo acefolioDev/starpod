@@ -1,4 +1,4 @@
-import type { AnyElysia } from "elysia";
+import { t, type AnyElysia } from "elysia";
 
 export type HealthCheck = {
   readonly name: string;
@@ -26,7 +26,9 @@ export function healthRoutes(app: AnyElysia, options: HealthRoutesOptions = {}) 
     names.add(check.name);
   }
 
-  app.get(livenessPath, () => ({ status: "ok" as const }));
+  app.get(livenessPath, () => ({ status: "ok" as const }), {
+    response: t.Object({ status: t.Literal("ok") }),
+  });
   return app.get(readinessPath, async ({ set }) => {
     const outcomes = await Promise.all(checks.map(async (check) => {
       try {
@@ -44,6 +46,13 @@ export function healthRoutes(app: AnyElysia, options: HealthRoutesOptions = {}) 
       status: ready ? ("ok" as const) : ("not_ready" as const),
       checks: results,
     };
+  }, {
+    response: t.Object({
+      status: t.Union([t.Literal("ok"), t.Literal("not_ready")]),
+      checks: t.Record(t.String(), t.Object({
+        status: t.Union([t.Literal("ok"), t.Literal("failed")]),
+      })),
+    }),
   });
 }
 

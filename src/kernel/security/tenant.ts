@@ -1,7 +1,7 @@
 import type { AnyElysia } from "elysia";
 import type Elysia from "elysia";
-import { BadRequest, Forbidden } from "./errors";
-import type { StarpodSingleton } from "./http";
+import { BadRequest, Forbidden } from "../errors/errors";
+import type { StarpodSingleton } from "../http/http";
 
 export type Tenant = {
   readonly id: string;

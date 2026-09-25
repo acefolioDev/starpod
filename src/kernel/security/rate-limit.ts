@@ -1,5 +1,5 @@
 import type { AnyElysia } from "elysia";
-import { TooManyRequests } from "./errors";
+import { TooManyRequests } from "../errors/errors";
 
 export type RateLimitDecision = {
   readonly allowed: boolean;
@@ -84,8 +84,9 @@ export function rateLimit(options: RateLimitOptions) {
 
     const identity = await key(request);
     if (!identity || identity.trim() === "") throw new Error("rateLimit key must return a non-empty string");
+    if (identity.length > 512) throw new Error("rateLimit key must be at most 512 characters");
 
-    const decision = await store.consume(`${name}:${identity}`, options.limit, options.windowMs);
+    const decision = await store.consume(rateLimitKey(name, identity), options.limit, options.windowMs);
     const resetInSeconds = Math.max(0, Math.ceil((decision.resetAt - now()) / 1000));
     set.headers["ratelimit-limit"] = String(decision.limit);
     set.headers["ratelimit-remaining"] = String(decision.remaining);
@@ -110,4 +111,11 @@ function validateOptions(options: RateLimitOptions) {
   if (!Number.isFinite(options.windowMs) || options.windowMs <= 0) {
     throw new Error("rateLimit windowMs must be a positive number");
   }
+  if (options.name !== undefined && (!options.name || options.name.length > 128 || /[\r\n]/.test(options.name))) {
+    throw new Error("rateLimit name must be a non-empty single-line string of at most 128 characters");
+  }
+}
+
+function rateLimitKey(name: string, identity: string) {
+  return `${encodeURIComponent(name)}:${encodeURIComponent(identity)}`;
 }

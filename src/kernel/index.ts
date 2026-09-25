@@ -1,235 +1,34 @@
-export {
-  pod,
-  application,
-  type Feature,
-  type Pod,
-  type Application,
-  type Controller,
-  type ControllerInstance,
-  type NativeRouteRegistrar,
-} from "./feature";
-export {
-  bootstrap,
-  disposeBootstrap,
-  type BootstrapOptions,
-  type RuntimeEnvironment,
-} from "./bootstrap";
-export {
-  createTestApplication,
-  type TestApplication,
-  type TestApplicationOptions,
-} from "./testing";
-export {
-  createGracefulShutdown,
-  installGracefulShutdown,
-  type GracefulServer,
-  type GracefulShutdownHandler,
-  type GracefulShutdownOptions,
-  type ShutdownSignal,
-} from "./lifecycle";
-export {
-  start,
-  type ListenOptions,
-  type StartOptions,
-  type StartedApplication,
-} from "./start";
-export { schema } from "./schema";
-export {
-  auditArchitecture,
-  sealArchitecture,
-  type ArchitectureAuditOptions,
-  type ArchitectureReport,
-} from "./architecture";
-export {
-  DatabaseConnection,
-  type DatabaseAdapter,
-  type DatabaseState,
-} from "./database";
-export {
-  MigrationRunner,
-  type Migration,
-  type MigrationStatus,
-  type MigrationStore,
-} from "./migrations";
-export {
-  Container,
-  GraphError,
-  type Constructor,
-  type Disposable,
-  type Initializable,
-  provideAsyncFactory,
-  type ProviderLifetime,
-  provideFactory,
-  provideValue,
-  providerLifetime,
-  providerToken,
-  token,
-  type FactoryProvider,
-  type AsyncFactoryProvider,
-  type InjectionToken,
-  type Injectable,
-  type Provider,
-  type ProviderToken,
-  type ResolvedToken,
-  type ValueProvider,
-} from "./di";
-export {
-  REQUEST_ID_HEADER,
-  CORRELATION_ID_HEADER,
-  correlationIdFrom,
-  requestIdFrom,
-  type AsyncRequestResolver,
-  type RequestResolver,
-  type StarpodElysia,
-  type StarpodSingleton,
-} from "./http";
-export {
-  HttpClient,
-  HttpClientError,
-  httpExponentialBackoff,
-  type FetchImplementation,
-  type HttpClientErrorCode,
-  type HttpClientErrorOptions,
-  type HttpClientEvent,
-  type HttpClientObserver,
-  type HttpClientOptions,
-  type HttpRequestOptions,
-} from "./http-client";
-export {
-  ConfigError,
-  defineConfig,
-  env,
-  inspectConfig,
-  type ConfigSource,
-  type ConfigValue,
-  type ResolvedConfig,
-} from "./config";
-export { routeManifest, type RouteManifestEntry } from "./routes";
-export {
-  openApiDocument,
-  type OpenApiDocument,
-  type OpenApiDocumentOptions,
-  type OpenApiSchema,
-  type OpenApiSecurityRequirement,
-  type OpenApiSecurityScheme,
-} from "./openapi";
-export {
-  consoleLogger,
-  durationMilliseconds,
-  pathFromUrl,
-  type LogFields,
-  type Logger,
-  type MetricLabels,
-  type Metrics,
-  type Span,
-  type SpanAttributeValue,
-  type SpanAttributes,
-  type Tracer,
-  noopTracer,
-  noopMetrics,
-} from "./observability";
-export {
-  MemoryInspector,
-  type Inspector,
-  type InspectorEvent,
-  type InspectorRecord,
-  type MemoryInspectorOptions,
-} from "./inspector";
-export { applySecurityHeaders, type SecurityHeaderTarget, type SecurityHeadersOptions } from "./security";
-export { healthRoutes, type HealthCheck, type HealthRoutesOptions } from "./health";
-export {
-  tenancy,
-  requireTenant,
-  tenantKey,
-  type Tenant,
-  type TenantElysia,
-  type TenantResolver,
-  type TenantSingleton,
-  type TenancyOptions,
-} from "./tenant";
-export { cors, type CorsOptions, type CorsOrigin } from "./cors";
-export { csrfProtection, csrfToken, type CsrfOptions } from "./csrf";
-export {
-  MemoryCache,
-  type CacheEvent,
-  type CacheObserver,
-  type CacheSetOptions,
-  type CacheStore,
-  type MemoryCacheOptions,
-} from "./cache";
-export {
-  decodeJob,
-  encodeJob,
-  exponentialBackoff,
-  InMemoryJobQueue,
-  InMemoryScheduler,
-  JobRegistry,
-  type DeadLetter,
-  type JobCodec,
-  type JobEnvelope,
-  type JobEvent,
-  type InMemoryJobQueueOptions,
-  type JobContext,
-  type JobDefinition,
-  type JobOptions,
-  type JobObserver,
-  type JobPayloadValue,
-  type JobQueue,
-  type JobWireOptions,
-  type JobReceipt,
-  type InMemorySchedulerOptions,
-  type ScheduleOptions,
-  type ScheduledTask,
-} from "./jobs";
-export {
-  MemoryRateLimitStore,
-  rateLimit,
-  type RateLimitDecision,
-  type RateLimitOptions,
-  type RateLimitStore,
-} from "./rate-limit";
-export {
-  authentication,
-  apiKeyFrom,
-  bearerToken,
-  cookieValue,
-  requirePermission,
-  requireRole,
-  requireUser,
-  type AuthenticatedElysia,
-  type AuthenticatedSingleton,
-  type ApiKeyOptions,
-  type AuthenticationOptions,
-  type Authenticator,
-  type Principal,
-} from "./auth";
-export {
-  definePolicy,
-  type Policy,
-  type PolicyContext,
-  type PolicyRule,
-} from "./policy";
-export {
-  EventBus,
-  EventRegistry,
-  type EventCodec,
-  type EventEnvelope,
-  type EventHandler,
-  type EventMap,
-  type EventSubscription,
-} from "./events";
-export { type JsonValue } from "./wire";
-export {
-  StarpodError,
-  BadRequest,
-  Unauthorized,
-  Forbidden,
-  NotFound,
-  Conflict,
-  TooManyRequests,
-  PayloadTooLarge,
-  InternalServerError,
-  serializeError,
-  type ErrorDetails,
-  type ErrorPayload,
-} from "./errors";
+export * from "./application/feature";
+export * from "./application/bootstrap";
+export * from "./application/testing";
+export * from "./application/lifecycle";
+export * from "./application/start";
+export * from "./application/architecture";
+export * from "./serialization/schema";
+export * from "./serialization/wire";
+export * from "./diagnostics/doctor";
+export * from "./data/database";
+export * from "./data/migrations";
+export * from "./data/cache";
+export * from "./di/di";
+export * from "./http/http";
+export * from "./http/http-client";
+export * from "./http/routes";
+export * from "./http/openapi";
+export * from "./http/health";
+export * from "./http/etag";
+export * from "./config/config";
+export * from "./observability/observability";
+export * from "./observability/inspector";
+export * from "./security/security";
+export * from "./security/tenant";
+export * from "./security/cors";
+export * from "./security/csrf";
+export * from "./security/rate-limit";
+export * from "./security/auth";
+export * from "./security/policy";
+export * from "./security/sessions";
+export * from "./security/passwords";
+export * from "./events/events";
+export * from "./jobs/jobs";
+export * from "./errors/errors";

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { createTestApplication } from "../src/kernel/testing";
-import { application, pod } from "../src/kernel/feature";
-import type { StarpodElysia } from "../src/kernel/http";
+import { createTestApplication } from "../src/kernel/application/testing";
+import { application, pod } from "../src/kernel/application/feature";
+import type { StarpodElysia } from "../src/kernel/http/http";
 
 describe("test application", () => {
   test("sends native requests and disposes the bootstrapped graph", async () => {

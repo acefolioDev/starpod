@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { HttpClient, HttpClientError } from "../src/kernel/http-client";
+import { HttpClient, HttpClientError } from "../src/kernel/http/http-client";
+import { traceContextFrom, type Span, type Tracer } from "../src/kernel/observability/observability";
 
 describe("HttpClient", () => {
   test("uses native fetch semantics with a base URL and typed JSON", async () => {
@@ -86,6 +87,33 @@ describe("HttpClient", () => {
     });
   });
 
+  test("keeps base-url clients on their configured origin by default", async () => {
+    const client = new HttpClient({
+      baseUrl: "https://api.example.test/v1/",
+      fetch: async () => new Response("never"),
+    });
+
+    await expect(client.request("https://attacker.example.test/redirect-target")).rejects.toMatchObject({
+      code: "INVALID_URL",
+    });
+  });
+
+  test("allows an explicit origin allowlist for multi-service clients", async () => {
+    let received = "";
+    const client = new HttpClient({
+      baseUrl: "https://api.example.test/",
+      allowedOrigins: ["https://api.example.test", "https://billing.example.test"],
+      fetch: async (input) => {
+        received = String(input);
+        return new Response("ok");
+      },
+    });
+
+    expect(await client.text("https://billing.example.test/invoices")).toBe("ok");
+    expect(received).toBe("https://billing.example.test/invoices");
+    await expect(client.request("file:///etc/passwd")).rejects.toMatchObject({ code: "INVALID_URL" });
+  });
+
   test("enforces a bounded parsed response size", async () => {
     const client = new HttpClient({
       maxResponseBytes: 3,
@@ -130,4 +158,6 @@ describe("HttpClient", () => {
       }),
     ]);
   });
+
+
 });

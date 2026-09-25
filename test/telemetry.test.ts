@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { bootstrap } from "../src/kernel/bootstrap";
-import { application, pod } from "../src/kernel/feature";
-import type { StarpodElysia } from "../src/kernel/http";
-import type { Metrics, Span, Tracer } from "../src/kernel/observability";
+import { bootstrap, disposeBootstrap } from "../src/kernel/application/bootstrap";
+import { application, pod } from "../src/kernel/application/feature";
+import type { StarpodElysia } from "../src/kernel/http/http";
+import type { Metrics, Span, TraceContext, Tracer } from "../src/kernel/observability/observability";
 
 describe("request telemetry", () => {
   test("creates and closes success and error spans", async () => {
@@ -11,11 +11,12 @@ describe("request telemetry", () => {
       readonly attributes: Record<string, string | number | boolean>;
       status?: "ok" | "error";
       exception?: unknown;
+      parent?: TraceContext;
       ended: boolean;
     };
     const records: SpanRecord[] = [];
     const tracer: Tracer = {
-      startSpan(name, initialAttributes): Span {
+      startSpan(name, initialAttributes, parent): Span {
         const record: SpanRecord = {
           name,
           attributes: Object.fromEntries(
@@ -23,6 +24,7 @@ describe("request telemetry", () => {
               entry[1] !== undefined,
             ),
           ),
+          parent,
           ended: false,
         };
         records.push(record);
@@ -59,7 +61,11 @@ describe("request telemetry", () => {
     );
 
     const success = await server.handle(new Request("http://localhost/telemetry/users/7", {
-      headers: { "x-request-id": "trace-1", "x-correlation-id": "group-1" },
+      headers: {
+        "x-request-id": "trace-1",
+        "x-correlation-id": "group-1",
+        traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+      },
     }));
     const failure = await server.handle(new Request("http://localhost/telemetry/error", {
       headers: { "x-request-id": "trace-2" },
@@ -76,6 +82,9 @@ describe("request telemetry", () => {
         "starpod.request.id": "trace-1",
         "starpod.correlation.id": "group-1",
         "http.status_code": 200,
+      },
+      parent: {
+        traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
       },
       status: "ok",
       ended: true,
@@ -137,6 +146,35 @@ describe("request telemetry", () => {
     ]);
   });
 
+  test("records the status of an explicit native Response", async () => {
+    const measurements: Array<Readonly<Record<string, string | number | boolean>>> = [];
+    class Controller {
+      routes(app: StarpodElysia) {
+        return app.get("/response", () => new Response("missing", { status: 404 }));
+      }
+    }
+    const server = await bootstrap(
+      application({
+        features: [pod({ name: "nativeresponse", prefix: "/native", controller: Controller })],
+      }),
+      {
+        printFeatures: false,
+        seal: false,
+        metrics: {
+          increment(_name, _value, labels) {
+            if (labels) measurements.push(labels);
+          },
+          observe() {},
+        },
+      },
+    );
+
+    const response = await server.handle(new Request("http://localhost/native/response"));
+
+    expect(response.status).toBe(404);
+    expect(measurements).toEqual([{ method: "GET", status_code: 404 }]);
+  });
+
   test("isolates metrics adapter failures from request handling", async () => {
     const errors: string[] = [];
     class Controller {
@@ -171,5 +209,31 @@ describe("request telemetry", () => {
 
     expect(response.status).toBe(200);
     expect(errors).toContain("telemetry.metrics.error");
+  });
+
+  test("isolates logger failures from request handling", async () => {
+    class Controller {
+      routes(app: StarpodElysia) {
+        return app.get("/", () => "ok");
+      }
+    }
+    const server = await bootstrap(
+      application({
+        features: [pod({ name: "loggerfailure", prefix: "/loggerfailure", controller: Controller })],
+      }),
+      {
+        printFeatures: false,
+        seal: false,
+        logger: {
+          info() { throw new Error("logger unavailable"); },
+          error() { throw new Error("logger unavailable"); },
+        },
+      },
+    );
+
+    const response = await server.handle(new Request("http://localhost/loggerfailure/"));
+
+    expect(response.status).toBe(200);
+    await disposeBootstrap(server);
   });
 });

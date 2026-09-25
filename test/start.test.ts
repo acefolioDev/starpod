@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { application, pod } from "../src/kernel/feature";
-import { start } from "../src/kernel/start";
-import type { StarpodElysia } from "../src/kernel/http";
+import { application, pod } from "../src/kernel/application/feature";
+import { start } from "../src/kernel/application/start";
+import type { StarpodElysia } from "../src/kernel/http/http";
 
 describe("start", () => {
   test("starts native Elysia and disposes the provider graph exactly once", async () => {

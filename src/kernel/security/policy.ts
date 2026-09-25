@@ -1,4 +1,4 @@
-import { Forbidden } from "./errors";
+import { Forbidden } from "../errors/errors";
 
 export type PolicyContext<TPrincipal, TResource> = {
   readonly user: TPrincipal;

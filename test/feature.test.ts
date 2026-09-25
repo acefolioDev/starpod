@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { application, pod } from "../src/kernel/feature";
+import { application, pod } from "../src/kernel/application/feature";
 
 class Controller {
   routes() {

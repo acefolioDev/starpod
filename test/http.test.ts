@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { correlationIdFrom, requestIdFrom } from "../src/kernel/http";
+import { correlationIdFrom, requestIdFrom } from "../src/kernel/http/http";
 
 describe("HTTP request identity", () => {
   test("accepts safe caller-provided request IDs", () => {

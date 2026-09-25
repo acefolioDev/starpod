@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { auditArchitecture } from "../src/kernel/architecture";
-import { application, pod } from "../src/kernel/feature";
-import type { StarpodElysia } from "../src/kernel/http";
+import { auditArchitecture } from "../src/kernel/application/architecture";
+import { application, pod } from "../src/kernel/application/feature";
+import type { StarpodElysia } from "../src/kernel/http/http";
 
 describe("architecture audit", () => {
   test("returns a structured report for an isolated valid project", async () => {

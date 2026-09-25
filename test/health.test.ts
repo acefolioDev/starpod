@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Elysia } from "elysia";
-import { healthRoutes } from "../src/kernel/health";
+import { healthRoutes } from "../src/kernel/http/health";
 
 describe("health routes", () => {
   test("keeps liveness independent from dependency checks", async () => {

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { bootstrap, disposeBootstrap, environmentFrom } from "../src/kernel/bootstrap";
-import { application, pod } from "../src/kernel/feature";
-import { provideAsyncFactory, provideValue, token } from "../src/kernel/di";
-import type { StarpodElysia } from "../src/kernel/http";
+import { bootstrap, disposeBootstrap, environmentFrom } from "../src/kernel/application/bootstrap";
+import { application, pod } from "../src/kernel/application/feature";
+import { provideAsyncFactory, provideValue, token } from "../src/kernel/di/di";
+import type { StarpodElysia } from "../src/kernel/http/http";
 
 describe("bootstrap safety", () => {
   test("rejects unknown NODE_ENV values instead of enabling development diagnostics", async () => {

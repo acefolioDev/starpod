@@ -1,5 +1,5 @@
 import type Elysia from "elysia";
-import type { InjectionToken } from "./di";
+import type { InjectionToken } from "../di/di";
 
 export const REQUEST_ID_HEADER = "x-request-id";
 export const CORRELATION_ID_HEADER = "x-correlation-id";

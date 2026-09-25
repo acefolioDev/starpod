@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { MemoryInspector } from "../src/kernel/inspector";
-import { bootstrap } from "../src/kernel/bootstrap";
-import { application, pod } from "../src/kernel/feature";
-import type { StarpodElysia } from "../src/kernel/http";
+import { MemoryInspector } from "../src/kernel/observability/inspector";
+import { bootstrap } from "../src/kernel/application/bootstrap";
+import { application, pod } from "../src/kernel/application/feature";
+import type { StarpodElysia } from "../src/kernel/http/http";
 
 describe("inspector", () => {
   test("keeps a bounded, timestamped event history", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createGracefulShutdown, installGracefulShutdown } from "../src/kernel/lifecycle";
+import { createGracefulShutdown, installGracefulShutdown } from "../src/kernel/application/lifecycle";
 
 describe("graceful shutdown", () => {
   test("stops only once when multiple signals arrive", async () => {

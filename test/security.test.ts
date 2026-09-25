@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applySecurityHeaders } from "../src/kernel/security";
+import { applySecurityHeaders } from "../src/kernel/security/security";
 
 describe("security headers", () => {
   test("applies conservative API defaults", () => {

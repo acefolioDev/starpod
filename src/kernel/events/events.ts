@@ -1,8 +1,20 @@
-import { assertJsonValue, type JsonValue } from "./wire";
+import { assertJsonValue, type JsonValue } from "../serialization/wire";
 
 export type EventMap = Record<string, unknown>;
 
 export type EventHandler<TPayload> = (payload: TPayload) => void | Promise<void>;
+
+export type EventBusEvent =
+  | { readonly operation: "emit"; readonly name: string; readonly handlers: number }
+  | { readonly operation: "handler-success"; readonly name: string; readonly handlerIndex: number }
+  | { readonly operation: "handler-failure"; readonly name: string; readonly handlerIndex: number }
+  | { readonly operation: "complete"; readonly name: string; readonly handlers: number; readonly failures: number };
+
+export type EventBusObserver = (event: EventBusEvent) => void;
+
+export type EventBusOptions = {
+  readonly onEvent?: EventBusObserver;
+};
 
 export type EventCodec<TPayload> = {
   readonly version?: string;
@@ -18,6 +30,10 @@ export type EventEnvelope = {
 
 export type EventSubscription = {
   unsubscribe(): void;
+};
+
+export type EventEnvelopePublisher = {
+  publish(envelope: EventEnvelope): Promise<void>;
 };
 
 /** Typed event codecs and envelopes for a broker or persisted event transport. */
@@ -80,6 +96,18 @@ export class EventRegistry<TEvents extends EventMap> {
   }
 }
 
+/** Publish versioned, encoded events through an application-owned transport. */
+export class EventDispatcher<TEvents extends EventMap> {
+  constructor(
+    private readonly registry: EventRegistry<TEvents>,
+    private readonly publisher: EventEnvelopePublisher,
+  ) {}
+
+  async emit<TKey extends keyof TEvents & string>(name: TKey, payload: TEvents[TKey]) {
+    await this.publisher.publish(this.registry.encode(name, payload));
+  }
+}
+
 function validateEventName(name: string) {
   if (!name || name.length > 128 || name.includes("\n") || name.includes("\r")) {
     throw new Error("event name must be a non-empty single-line string of at most 128 characters");
@@ -95,6 +123,11 @@ function validateEventVersion(version: string | undefined) {
 
 export class EventBus<TEvents extends EventMap> {
   private readonly handlers = new Map<keyof TEvents, Set<EventHandler<unknown>>>();
+  private readonly onEvent: EventBusObserver | undefined;
+
+  constructor(options: EventBusOptions = {}) {
+    this.onEvent = options.onEvent;
+  }
 
   on<TKey extends keyof TEvents & string>(
     name: TKey,
@@ -115,14 +148,19 @@ export class EventBus<TEvents extends EventMap> {
   async emit<TKey extends keyof TEvents & string>(name: TKey, payload: TEvents[TKey]) {
     const handlers = [...(this.handlers.get(name) ?? [])];
     const failures: unknown[] = [];
+    this.observe({ operation: "emit", name, handlers: handlers.length });
 
-    for (const handler of handlers) {
+    for (const [handlerIndex, handler] of handlers.entries()) {
       try {
         await handler(payload);
+        this.observe({ operation: "handler-success", name, handlerIndex });
       } catch (error) {
         failures.push(error);
+        this.observe({ operation: "handler-failure", name, handlerIndex });
       }
     }
+
+    this.observe({ operation: "complete", name, handlers: handlers.length, failures: failures.length });
 
     if (failures.length > 0) {
       throw new AggregateError(failures, `event delivery failed: ${name}`);
@@ -131,5 +169,13 @@ export class EventBus<TEvents extends EventMap> {
 
   clear() {
     this.handlers.clear();
+  }
+
+  private observe(event: EventBusEvent) {
+    try {
+      this.onEvent?.(event);
+    } catch {
+      // Event telemetry must not alter delivery semantics.
+    }
   }
 }

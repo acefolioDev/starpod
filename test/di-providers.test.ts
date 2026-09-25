@@ -5,7 +5,7 @@ import {
   provideFactory,
   provideValue,
   token,
-} from "../src/kernel/di";
+} from "../src/kernel/di/di";
 
 type DatabaseConfig = {
   readonly url: string;

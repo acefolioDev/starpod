@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BadRequest, InternalServerError, NotFound, serializeError } from "../src/kernel/errors";
+import { BadRequest, InternalServerError, NotFound, serializeError } from "../src/kernel/errors/errors";
 
 describe("errors", () => {
   test("serializes a safe application error", () => {

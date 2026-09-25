@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Elysia } from "elysia";
-import { csrfProtection, csrfToken } from "../src/kernel/csrf";
+import { csrfProtection, csrfToken } from "../src/kernel/security/csrf";
 
 describe("CSRF protection", () => {
   test("creates URL-safe tokens and validates double-submit cookies", async () => {

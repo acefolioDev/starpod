@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ConfigError, defineConfig, env, inspectConfig } from "../src/kernel/config";
+import { ConfigError, defineConfig, env, inspectConfig } from "../src/kernel/config/config";
 
 describe("configuration", () => {
   test("loads typed values from an explicit source", () => {

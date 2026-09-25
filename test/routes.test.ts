@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Elysia, t } from "elysia";
-import { routeManifest } from "../src/kernel/routes";
+import { routeManifest } from "../src/kernel/http/routes";
 
 describe("route manifest", () => {
   test("reflects native Elysia routes and documentation metadata", () => {

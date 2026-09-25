@@ -2,7 +2,7 @@
 
 An enterprise-friendly structure for Elysia applications: explicit constructor DI, feature boundaries, and native Elysia routes in controllers. TypeScript only. No decorators.
 
-> Current status: working alpha. The core runtime, explicit DI, native routes, configuration, error handling, health checks, adapter-based authentication, optional tenant context, request/correlation identity, request logging, bounded development inspection, vendor-neutral tracing and metrics boundaries, security headers, CSRF protection for cookie-authenticated routes, database lifecycle/transaction boundaries, deterministic migration orchestration, in-process events, typed in-process jobs and scheduling, cache primitives, rate-limit primitives, and a dependency-free outbound HTTP client are implemented. Vendor database adapters, durable queues/schedulers, distributed event delivery, distributed caching/rate limiting, full OpenTelemetry integration, and release hardening are still application-owned or planned.
+> Current status: working alpha. The core runtime, explicit DI, native routes, configuration, error handling, health checks, adapter-based authentication and sessions, optional tenant context, request/correlation identity, request logging, bounded development inspection, vendor-neutral tracing and metrics boundaries, security headers, CSRF protection for cookie-authenticated routes, ETags for finite responses, database lifecycle/transaction boundaries, deterministic migration orchestration, in-process events, typed in-process jobs and scheduling, cache primitives, rate-limit primitives, an origin-restricted outbound HTTP client, and CLI diagnostics are implemented. Vendor database adapters, durable queues/schedulers, distributed event delivery, distributed caching/rate limiting, full OpenTelemetry integration, and application deployment hardening are still application-owned or planned. Package release contents are covered by build, type, clean-consumer, scaffold, audit, doctor, and pack smoke checks.
 
 ```bash
 mkdir my-app && cd my-app
@@ -30,6 +30,27 @@ src/
 ```
 
 Every feature owns a folder. Controllers own their routes. Pods wire a controller to a URL prefix and its providers. Services contain application logic. Infrastructure is shared through `application({ providers })`.
+
+The framework kernel is organized by capability so each area can grow independently:
+
+```text
+src/kernel/
+  application/     bootstrap, features, lifecycle, startup, testing
+  config/          typed configuration
+  data/            cache, database, migrations
+  diagnostics/     doctor and project diagnostics
+  di/              constructor dependency injection
+  errors/          typed HTTP errors and safe serialization
+  events/          in-process and durable event boundaries
+  http/            native HTTP context, clients, routes, OpenAPI, health, ETags
+  jobs/            jobs, queues, schedulers, durable dispatch boundaries
+  observability/   logs, metrics, tracing, inspection
+  security/        authentication, authorization, CORS, CSRF, rate limits, tenancy
+  serialization/   schemas and JSON-safe wire contracts
+  index.ts         public Starpod API barrel
+```
+
+Application code should import from `starpod`. The folders are the maintainable internal boundaries of the framework and do not create a second public API surface.
 
 ## Native Elysia routes
 
@@ -360,6 +381,26 @@ const auth = authentication(async (request) => {
 
 API keys are read from headers only; cookie parsing matches exact names and rejects invalid percent-encoding. Starpod does not invent session storage, token formats, password hashing, or cryptographic protocols.
 
+For cookie-backed sessions, use an application-owned store with Starpod's secure opaque-cookie boundary:
+
+```ts
+import { sessions, type Session } from "starpod";
+
+const sessionAuth = sessions<Session>({
+  required: true,
+  store: {
+    get: (id) => sessionStore.find(id),
+    delete: (id) => sessionStore.delete(id),
+  },
+});
+
+const server = await bootstrap(app, {
+  configure: (elysia) => sessionAuth(elysia),
+});
+```
+
+The cookie contains only a random opaque session ID and defaults to `HttpOnly`, `Secure`, `SameSite=Lax`, and `Path=/`. Expired sessions are deleted and cleared. Starpod does not own session persistence, user lookup, password authentication, OAuth, MFA, or token rotation policy.
+
 For resource-level rules, define an explicit policy next to the domain logic:
 
 ```ts
@@ -419,7 +460,9 @@ const payments = new HttpClient({
 const payment = await payments.json<Payment>(`/payments/${paymentId}`);
 ```
 
-`request()` preserves normal `fetch` behavior and returns non-2xx responses as `Response` objects. `json()` throws `HttpClientError` for non-2xx responses or invalid JSON. Retries default to `GET`, `HEAD`, and `OPTIONS`; writes are never retried unless `retryMethods` explicitly includes them. URLs in errors and telemetry omit credentials, query values, and fragments. Register the client as a normal Starpod provider when it is shared by services.
+`request()` preserves normal `fetch` behavior and returns non-2xx responses as `Response` objects. `json()` throws `HttpClientError` for non-2xx responses or invalid JSON. Retries default to `GET`, `HEAD`, and `OPTIONS`; writes are never retried unless `retryMethods` explicitly includes them. URLs in errors and telemetry omit credentials, query values, and fragments. Pass a `Tracer` adapter to create one safe `http.client` span per attempt. Register the client as a normal Starpod provider when it is shared by services.
+
+When `baseUrl` is configured, requests are restricted to that origin by default. Use `allowedOrigins` for an explicit multi-service allowlist. This prevents accidental user-controlled absolute URLs from turning a service client into an SSRF primitive; network-level egress controls are still required for complete SSRF defense.
 
 ## Typed events
 
@@ -442,18 +485,24 @@ await events.emit("user.created", { userId: user.id });
 
 Handlers run in registration order. Delivery failures are aggregated instead of being silently swallowed.
 
+Pass `onEvent` to `EventBus` for value-free emit, handler, and completion telemetry. Observer failures are isolated from event delivery; payloads and handler errors are never included in the events.
+
 For broker or outbox delivery, register a versioned codec with `EventRegistry`. It produces a transport-safe envelope and rejects events without an explicit serialization contract:
 
-    const registry = new EventRegistry<Events>();
-    registry.register("user.created", {
-      version: "1",
-      encode: (event) => event,
-      decode: (payload) => payload as Events["user.created"],
-    });
+```ts
+const registry = new EventRegistry<Events>();
+registry.register("user.created", {
+  version: "1",
+  encode: (event) => event,
+  decode: (payload) => payload as Events["user.created"],
+});
 
-    const envelope = registry.encode("user.created", { userId: user.id });
+const envelope = registry.encode("user.created", { userId: user.id });
+```
 
 Distributed adapters still own delivery guarantees such as retries, ordering, consumer groups, and dead letters; the event contract remains shared and typed.
+
+`EventDispatcher` is the durable-transport bridge: it encodes through the registry and publishes an envelope, while the broker owns delivery, retries, consumer groups, and dead letters.
 
 ## Background jobs
 
@@ -505,6 +554,22 @@ Use a `codec` whenever payloads cross a process or persistence boundary. This ke
 
 `InMemoryJobQueue` exposes `dispose()`, so registering it as an application singleton lets Starpod drain it during normal shutdown.
 
+For a durable broker, use `DurableJobDispatcher`. It requires a job codec and publishes only a transport-safe envelope; the worker registers the same job with `JobRegistry` and never receives a serialized handler closure:
+
+```ts
+import { DurableJobDispatcher } from "starpod";
+
+const dispatcher = new DurableJobDispatcher({
+  publish: (envelope) => broker.publish(envelope),
+});
+
+await dispatcher.dispatch(sendWelcomeEmail, { userId: user.id }, {
+  maxAttempts: 3,
+});
+```
+
+The broker adapter remains responsible for durability, visibility timeouts, acknowledgement, retries, consumer groups, and dead-letter storage.
+
 For local work and tests, `InMemoryScheduler` dispatches typed jobs on a fixed-delay interval through a `JobQueue`:
 
 ```ts
@@ -543,7 +608,7 @@ const user = await cache.getOrSet(`user:${userId}`, () => users.find(userId), {
 cache.invalidateTag(`user:${userId}`);
 ```
 
-The memory implementation supports TTLs, bounded storage, namespaces, tags, and concurrent-loader coalescing. It is process-local. A distributed `CacheStore` implementation should provide the same explicit operations over Redis or another shared cache.
+The memory implementation supports TTLs, bounded LRU storage, namespaces, tags, and concurrent-loader coalescing. It is process-local. A distributed `CacheStore` implementation must provide the same `getOrSet` stampede-protection contract over Redis or another shared cache rather than silently falling back to an uncoordinated read-then-write sequence.
 
 Pass `onEvent` to `MemoryCache` for value-free cache telemetry. Events identify hits, misses, writes, deletes, tag invalidations, and loader coalescing; observer failures never change cache behavior.
 
@@ -562,6 +627,8 @@ const server = await bootstrap(app, {
 The built-in request events include method, path, status, duration, request ID, and safe error codes. Request bodies, headers, credentials, and query values are never logged by the built-in logger.
 
 Bootstrap also accepts a small `Tracer` adapter. Starpod creates an `http.server` span with request identity, route, status, errors, and duration; applications can bridge that contract to OpenTelemetry, another tracer, or a test recorder without adding a telemetry dependency to the framework.
+
+Incoming valid W3C `traceparent`/`tracestate` headers are passed to the adapter as parent context. `HttpClient` accepts the same context per request and can let the tracer inject outbound propagation headers.
 
 ```ts
 const server = await bootstrap(app, {
@@ -590,9 +657,11 @@ console.log(inspector.snapshot());
 
 Conservative API security headers and a 10 MiB request-body limit are enabled by default. Override the limit explicitly for larger uploads; Elysia's server-level limit also protects requests without a declared Content-Length:
 
-    const server = await bootstrap(app, {
-      maxRequestBodyBytes: 50 * 1024 * 1024,
-    });
+```ts
+const server = await bootstrap(app, {
+  maxRequestBodyBytes: 50 * 1024 * 1024,
+});
+```
 
 HSTS is opt-in because it requires a verified HTTPS and proxy setup:
 
@@ -633,6 +702,20 @@ const server = await bootstrap(app, {
 
 Mutating requests must send the same token in the configured cookie and `x-csrf-token` header. Starpod validates the comparison; the application remains responsible for setting cookie attributes and associating the token with its session policy.
 
+For finite JSON or text responses, add standard conditional caching with ETags:
+
+```ts
+import { etag } from "starpod";
+
+const server = await bootstrap(app, {
+  configure: (elysia) => etag({
+    cacheControl: "private, max-age=30",
+  })(elysia),
+});
+```
+
+Matching `If-None-Match` requests receive `304 Not Modified`. Streaming responses and explicit `Response` bodies are left untouched, and responses larger than the configured limit are not hashed.
+
 ## Rate limiting
 
 Rate limiting is an explicit native Elysia hook. The built-in store is bounded and process-local; use a shared atomic store for horizontally scaled deployments:
@@ -650,6 +733,19 @@ const server = await bootstrap(app, {
 ```
 
 The hook emits standard `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers plus `Retry-After` on rejected requests. Legacy `X-RateLimit-*` aliases are also emitted during the alpha period. A custom `RateLimitStore` must make `consume` atomic for its deployment, such as with Redis or another shared data store.
+
+## CLI diagnostics
+
+Use the architecture audit for framework boundaries and the doctor for project and deployment hazards:
+
+```bash
+starpod audit
+starpod audit --json
+starpod doctor
+starpod doctor --json
+```
+
+`doctor` checks the package module/dependency setup, required application files, supported `NODE_ENV`, Bun version, environment-file ignore rules, and the architecture report when `src/app.ts` is available. Warnings are reported without failing CI; blocking findings return a non-zero exit code.
 
 ## Testing
 
@@ -671,9 +767,12 @@ await testApp.dispose();
 Run the framework checks and release build with:
 
 ```bash
+bun run check:lines
 bun run check
 bun run build
 ```
+
+Framework TypeScript files are intentionally limited to 250 lines. Larger areas are split into focused capability modules so the code remains easy to navigate and review.
 
 For a project-level architecture report, use the CLI audit command. It exits non-zero when the filesystem conventions or explicit DI graph are invalid, and supports JSON output for CI:
 

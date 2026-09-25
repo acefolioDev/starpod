@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { durationMilliseconds, pathFromUrl } from "../src/kernel/observability";
+import { durationMilliseconds, pathFromUrl } from "../src/kernel/observability/observability";
 
 describe("observability", () => {
   test("extracts only the URL path", () => {

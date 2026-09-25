@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DatabaseConnection } from "../src/kernel/database";
+import { DatabaseConnection } from "../src/kernel/data/database";
 
 describe("DatabaseConnection", () => {
   test("owns connection lifecycle and delegates transactions", async () => {

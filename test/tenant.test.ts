@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Elysia } from "elysia";
-import { requireTenant, tenancy, tenantKey, type TenantElysia } from "../src/kernel/tenant";
+import { requireTenant, tenancy, tenantKey, type TenantElysia } from "../src/kernel/security/tenant";
 
 describe("tenant context", () => {
   test("resolves a tenant through native Elysia context", async () => {

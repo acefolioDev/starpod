@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Container, GraphError } from "../src/kernel/di";
+import { Container, GraphError } from "../src/kernel/di/di";
 
 class Clock {
   readonly id = Symbol("clock");

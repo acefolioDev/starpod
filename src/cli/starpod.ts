@@ -1,10 +1,11 @@
 #!/usr/bin/env bun
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { auditArchitecture, sealArchitecture } from "../kernel/architecture";
-import { bootstrap, disposeBootstrap } from "../kernel/bootstrap";
-import { openApiDocument } from "../kernel/openapi";
-import { routeManifest } from "../kernel/routes";
+import { auditArchitecture, sealArchitecture } from "../kernel/application/architecture";
+import { bootstrap, disposeBootstrap } from "../kernel/application/bootstrap";
+import { doctor } from "../kernel/diagnostics/doctor";
+import { openApiDocument } from "../kernel/http/openapi";
+import { routeManifest } from "../kernel/http/routes";
 import { scaffold } from "./scaffold";
 
 const command = process.argv[2] ?? "init";
@@ -45,6 +46,22 @@ async function run(value: string) {
           "\n  ✕  architecture audit found " + report.violations.length + " " + label +
           "\n" + report.violations.map((violation) => "  - " + violation).join("\n") + "\n",
         );
+      }
+      if (!report.ok) process.exitCode = 1;
+      return;
+    }
+    case "doctor": {
+      const appPath = join(process.cwd(), "src/app.ts");
+      const app = await Bun.file(appPath).exists() ? await loadApp() : undefined;
+      const report = await doctor({ root: process.cwd(), app });
+      if (process.argv.includes("--json")) {
+        console.log(JSON.stringify(report, null, 2));
+      } else {
+        for (const finding of report.findings) {
+          const symbol = finding.severity === "error" ? "✕" : finding.severity === "warning" ? "!" : "·";
+          console.log(`  ${symbol}  [${finding.code}] ${finding.message}`);
+        }
+        console.log(report.ok ? "\n  ✓  doctor found no blocking issues\n" : "\n  ✕  doctor found blocking issues\n");
       }
       if (!report.ok) process.exitCode = 1;
       return;
@@ -103,6 +120,7 @@ function usage() {
     "  starpod init       Create the starter application structure",
     "  starpod seal       Validate architecture and the DI graph",
     "  starpod audit      Report architecture findings (add --json for CI)",
+    "  starpod doctor     Check project setup and production hazards",
     "  starpod routes     Print routes registered by native Elysia APIs",
     "  starpod openapi    Print an OpenAPI document as JSON",
     "  starpod help       Show this help",

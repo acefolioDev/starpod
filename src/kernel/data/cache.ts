@@ -16,6 +16,7 @@ export type CacheObserver = (event: CacheEvent) => void;
 export type CacheStore = {
   get<T>(key: string): T | undefined | Promise<T | undefined>;
   set<T>(key: string, value: T, options?: CacheSetOptions): void | Promise<void>;
+  getOrSet<T>(key: string, loader: () => T | Promise<T>, options?: CacheSetOptions): Promise<T>;
   delete(key: string): boolean | Promise<boolean>;
   invalidateTag(tag: string): number | Promise<number>;
 };
@@ -150,6 +151,10 @@ export class MemoryCache implements CacheStore {
       this.delete(key);
       return { hit: false };
     }
+    // Keep the bounded in-memory cache LRU: the least recently read entry is
+    // the first candidate for eviction when the limit is reached.
+    this.entries.delete(key);
+    this.entries.set(key, entry);
     return { hit: true, value: entry.value as T };
   }
 
@@ -184,6 +189,10 @@ class NamespacedCache implements CacheStore {
 
   set<T>(key: string, value: T, options?: CacheSetOptions) {
     return this.cache.set(this.key(key), value, this.tags(options));
+  }
+
+  getOrSet<T>(key: string, loader: () => T | Promise<T>, options?: CacheSetOptions) {
+    return this.cache.getOrSet(this.key(key), loader, this.tags(options));
   }
 
   delete(key: string) {

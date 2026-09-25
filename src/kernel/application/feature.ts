@@ -1,4 +1,4 @@
-import { providerToken, type Injectable, type Provider } from "./di";
+import { providerToken, type Injectable, type Provider } from "../di/di";
 
 /**
  * A route registrar keeps its concrete Elysia type in the controller source.

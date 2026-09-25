@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Elysia } from "elysia";
-import { cors } from "../src/kernel/cors";
+import { cors } from "../src/kernel/security/cors";
 
 describe("CORS", () => {
   test("applies an explicit allowlist and handles preflight natively", async () => {
@@ -50,5 +50,11 @@ describe("CORS", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("access-control-allow-origin")).toBe("*");
     expect(response.headers.get("vary")).toBeNull();
+  });
+
+  test("rejects header-injection policy values", () => {
+    expect(() => cors({ origin: ["https://app.example.com\r\nX-Evil: true"] })).toThrow();
+    expect(() => cors({ origin: ["https://app.example.com"], methods: ["GET\r\nX-Evil: true"] })).toThrow();
+    expect(() => cors({ origin: ["https://app.example.com"], allowedHeaders: ["X-Test\n"] })).toThrow();
   });
 });

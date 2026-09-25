@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Container, GraphError } from "../src/kernel/di";
+import { Container, GraphError } from "../src/kernel/di/di";
 
 describe("DI lifetimes", () => {
   test("keeps singleton providers shared and transient providers fresh", () => {

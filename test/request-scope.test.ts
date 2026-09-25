@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { bootstrap } from "../src/kernel/bootstrap";
-import { application, pod } from "../src/kernel/feature";
-import type { StarpodElysia } from "../src/kernel/http";
+import { bootstrap } from "../src/kernel/application/bootstrap";
+import { application, pod } from "../src/kernel/application/feature";
+import type { StarpodElysia } from "../src/kernel/http/http";
 
 describe("native request DI", () => {
   test("resolves request providers through native Elysia context and disposes them", async () => {

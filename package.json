@@ -41,9 +41,10 @@
     "build": "bun run build:types && bun build src/kernel/index.ts --outfile dist/index.js --target bun --format esm --external elysia && bun build src/cli/starpod.ts --outfile dist/cli/starpod.js --target bun --format esm --external elysia",
     "build:types": "bunx tsc -p tsconfig.build.json",
     "typecheck": "bunx tsc --noEmit",
+    "check:lines": "bun scripts/check-line-limits.ts",
     "test": "bun test",
     "test:package": "bun run scripts/package-smoke.ts",
-    "check": "bun run typecheck && bun test",
+    "check": "bun run check:lines && bun run typecheck && bun test",
     "seal": "bun run check",
     "prepack": "bun run build"
   },

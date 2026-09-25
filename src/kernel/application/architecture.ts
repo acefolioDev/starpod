@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
 import type { Application, Feature } from "./feature";
-import { Container, GraphError } from "./di";
+import { Container, GraphError } from "../di/di";
 
 export class ArchitectureError extends Error {
   constructor(violations: string[]) {

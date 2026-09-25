@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { MemoryCache } from "../src/kernel/cache";
+import { MemoryCache } from "../src/kernel/data/cache";
 
 describe("MemoryCache", () => {
   test("emits value-free operation events without affecting cache behavior", async () => {
-    const events: import("../src/kernel/cache").CacheEvent[] = [];
+    const events: import("../src/kernel/data/cache").CacheEvent[] = [];
     const cache = new MemoryCache({
       onEvent: (event) => {
         events.push(event);
@@ -38,6 +38,19 @@ describe("MemoryCache", () => {
     cache.set("second", 2);
     expect(cache.get<number>("first")).toBeUndefined();
     expect(cache.get<number>("second")).toBe(2);
+  });
+
+  test("evicts the least recently used entry", () => {
+    const cache = new MemoryCache({ maxEntries: 2 });
+    cache.set("first", 1);
+    cache.set("second", 2);
+    expect(cache.get<number>("first")).toBe(1);
+
+    cache.set("third", 3);
+
+    expect(cache.get<number>("first")).toBe(1);
+    expect(cache.get<number>("second")).toBeUndefined();
+    expect(cache.get<number>("third")).toBe(3);
   });
 
   test("invalidates entries by tag and keeps namespaces isolated", () => {
@@ -78,6 +91,27 @@ describe("MemoryCache", () => {
     expect(loads).toBe(1);
     expect(await cache.getOrSet("config", loader)).toEqual({ value: "loaded" });
     expect(loads).toBe(1);
+  });
+
+  test("keeps getOrSet coalescing and tags inside a namespace", async () => {
+    const cache = new MemoryCache();
+    const namespaced = cache.namespace("users");
+    let loads = 0;
+
+    const first = namespaced.getOrSet("one", async () => {
+      loads += 1;
+      return { id: "one" };
+    }, { tags: ["user"] });
+    const second = namespaced.getOrSet("one", async () => {
+      loads += 1;
+      return { id: "wrong" };
+    }, { tags: ["user"] });
+
+    expect(await first).toEqual({ id: "one" });
+    expect(await second).toEqual({ id: "one" });
+    expect(loads).toBe(1);
+    expect(namespaced.invalidateTag("user")).toBe(1);
+    expect(namespaced.get<{ id: string }>("one")).toBeUndefined();
   });
 
   test("retains undefined as a cached value", async () => {

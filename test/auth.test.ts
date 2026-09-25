@@ -8,7 +8,7 @@ import {
   requirePermission,
   requireRole,
   requireUser,
-} from "../src/kernel/auth";
+} from "../src/kernel/security/auth";
 
 describe("authentication", () => {
   test("extracts only a well-formed bearer token", () => {

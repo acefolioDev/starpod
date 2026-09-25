@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Elysia, t } from "elysia";
-import { openApiDocument } from "../src/kernel/openapi";
+import { openApiDocument } from "../src/kernel/http/openapi";
 
 describe("OpenAPI document", () => {
   test("derives paths, parameters, bodies, responses, and native detail", () => {

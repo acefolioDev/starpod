@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Container } from "../src/kernel/di";
+import { Container } from "../src/kernel/di/di";
 
 describe("Container disposal", () => {
   test("initializes instances in dependency order", async () => {

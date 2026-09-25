@@ -73,8 +73,28 @@ function validateOptions(options: CorsOptions) {
   if (options.credentials && Array.isArray(options.origin) && options.origin.includes("*")) {
     throw new Error("CORS credentials cannot be used with a wildcard origin");
   }
+  if (Array.isArray(options.origin)) {
+    for (const origin of options.origin) validateHeaderValue(origin, "CORS origin");
+  }
+  validateTokens(options.methods ?? DEFAULT_METHODS, "CORS methods");
+  validateTokens(options.allowedHeaders ?? DEFAULT_ALLOWED_HEADERS, "CORS allowedHeaders");
+  validateTokens(options.exposedHeaders ?? [], "CORS exposedHeaders");
   if (options.maxAgeSeconds !== undefined &&
     (!Number.isInteger(options.maxAgeSeconds) || options.maxAgeSeconds < 0)) {
     throw new Error("CORS maxAgeSeconds must be a non-negative integer");
+  }
+}
+
+function validateTokens(values: readonly string[], label: string) {
+  for (const value of values) {
+    if (!value || /[\r\n]/.test(value) || !/^[!#$%&'*+\-.^_`|~0-9A-Za-z*]+$/.test(value)) {
+      throw new Error(`${label} must contain valid HTTP token values`);
+    }
+  }
+}
+
+function validateHeaderValue(value: string, label: string) {
+  if (!value || /[\r\n]/.test(value)) {
+    throw new Error(`${label} must not be empty or contain header injection characters`);
   }
 }

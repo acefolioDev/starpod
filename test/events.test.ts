@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { EventBus, EventRegistry } from "../src/kernel/events";
-import type { JsonValue } from "../src/kernel/wire";
+import { EventBus, EventDispatcher, EventRegistry } from "../src/kernel/events/events";
+import type { JsonValue } from "../src/kernel/serialization/wire";
 
 type Events = {
   "user.created": { readonly id: string };
@@ -43,6 +43,26 @@ describe("EventBus", () => {
     );
     expect(events).toEqual([]);
   });
+
+  test("emits value-free lifecycle telemetry without affecting delivery", async () => {
+    const events: import("../src/kernel/events/events").EventBusEvent[] = [];
+    const bus = new EventBus<{ created: { id: string } }>({
+      onEvent(event) {
+        events.push(event);
+        throw new Error("observer failed");
+      },
+    });
+    bus.on("created", () => undefined);
+
+    await bus.emit("created", { id: "secret-user-id" });
+
+    expect(events).toEqual([
+      { operation: "emit", name: "created", handlers: 1 },
+      { operation: "handler-success", name: "created", handlerIndex: 0 },
+      { operation: "complete", name: "created", handlers: 1, failures: 0 },
+    ]);
+    expect(JSON.stringify(events)).not.toContain("secret-user-id");
+  });
 });
 
 describe("EventRegistry", () => {
@@ -84,5 +104,30 @@ describe("EventRegistry", () => {
       encode: (payload) => payload as unknown as JsonValue,
       decode: (payload) => payload as Events["user.deleted"],
     })).toThrow("event version");
+  });
+});
+
+describe("EventDispatcher", () => {
+  test("publishes a versioned encoded envelope", async () => {
+    const registry = new EventRegistry<{ "user.created": { userId: string } }>();
+    registry.register("user.created", {
+      version: "1",
+      encode: (payload) => payload,
+      decode: (payload) => payload as { userId: string },
+    });
+    const envelopes: unknown[] = [];
+    const dispatcher = new EventDispatcher(registry, {
+      publish: async (envelope) => {
+        envelopes.push(envelope);
+      },
+    });
+
+    await dispatcher.emit("user.created", { userId: "user-1" });
+
+    expect(envelopes).toEqual([{
+      name: "user.created",
+      version: "1",
+      payload: { userId: "user-1" },
+    }]);
   });
 });

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { Elysia } from "elysia";
-import { bootstrap } from "../src/kernel/bootstrap";
-import { application, pod } from "../src/kernel/feature";
-import type { StarpodElysia } from "../src/kernel/http";
-import { MemoryRateLimitStore, rateLimit } from "../src/kernel/rate-limit";
+import { bootstrap } from "../src/kernel/application/bootstrap";
+import { application, pod } from "../src/kernel/application/feature";
+import type { StarpodElysia } from "../src/kernel/http/http";
+import { MemoryRateLimitStore, rateLimit } from "../src/kernel/security/rate-limit";
 
 describe("rate limiting", () => {
   test("uses bounded fixed windows and resets after expiry", () => {
@@ -90,5 +90,31 @@ describe("rate limiting", () => {
       new Elysia(),
     ).get("/", () => "ok");
     expect((await blank.handle(new Request("http://localhost/"))).status).toBe(500);
+  });
+
+  test("keeps policy names and identities collision-safe and bounded", async () => {
+    const keys: string[] = [];
+    const app = rateLimit({
+      name: "tenant:api",
+      limit: 1,
+      windowMs: 100,
+      key: () => "tenant:api",
+      store: {
+        consume(key, limit, windowMs) {
+          keys.push(key);
+          return { allowed: true, limit, remaining: 0, resetAt: Date.now() + windowMs };
+        },
+      },
+    })(new Elysia()).get("/", () => "ok");
+
+    expect((await app.handle(new Request("http://localhost/"))).status).toBe(200);
+    expect(keys).toEqual(["tenant%3Aapi:tenant%3Aapi"]);
+
+    const oversized = rateLimit({
+      limit: 1,
+      windowMs: 100,
+      key: () => "x".repeat(513),
+    })(new Elysia()).get("/", () => "ok");
+    expect((await oversized.handle(new Request("http://localhost/"))).status).toBe(500);
   });
 });

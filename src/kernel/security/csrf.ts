@@ -1,6 +1,6 @@
 import type { AnyElysia } from "elysia";
 import { cookieValue } from "./auth";
-import { Forbidden } from "./errors";
+import { Forbidden } from "../errors/errors";
 
 export type CsrfOptions = {
   /** Defaults to `csrf-token`. */
