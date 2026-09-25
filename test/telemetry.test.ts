@@ -59,7 +59,7 @@ describe("request telemetry", () => {
     );
 
     const success = await server.handle(new Request("http://localhost/telemetry/users/7", {
-      headers: { "x-request-id": "trace-1" },
+      headers: { "x-request-id": "trace-1", "x-correlation-id": "group-1" },
     }));
     const failure = await server.handle(new Request("http://localhost/telemetry/error", {
       headers: { "x-request-id": "trace-2" },
@@ -74,6 +74,7 @@ describe("request telemetry", () => {
         "http.method": "GET",
         "http.route": "/telemetry/users/:id",
         "starpod.request.id": "trace-1",
+        "starpod.correlation.id": "group-1",
         "http.status_code": 200,
       },
       status: "ok",

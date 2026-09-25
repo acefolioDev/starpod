@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Elysia } from "elysia";
 import {
+  apiKeyFrom,
   authentication,
   bearerToken,
+  cookieValue,
   requirePermission,
   requireRole,
   requireUser,
@@ -19,6 +21,21 @@ describe("authentication", () => {
     expect(
       bearerToken(new Request("http://localhost", { headers: { authorization: "Basic abc" } })),
     ).toBeUndefined();
+  });
+
+  test("extracts API keys from explicit headers and exact cookie values", () => {
+    const request = new Request("http://localhost", {
+      headers: {
+        "x-api-key": " key-123 ",
+        cookie: "session=abc%20123; theme=dark; session-extra=nope",
+      },
+    });
+
+    expect(apiKeyFrom(request)).toBe("key-123");
+    expect(apiKeyFrom(request, { header: "x-api-key", prefix: "Api-Key " })).toBeUndefined();
+    expect(cookieValue(request, "session")).toBe("abc 123");
+    expect(cookieValue(request, "session-extra")).toBe("nope");
+    expect(cookieValue(request, "missing")).toBeUndefined();
   });
 
   test("resolves an authenticated principal through native Elysia context", async () => {

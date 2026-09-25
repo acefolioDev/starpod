@@ -30,3 +30,6 @@ jobs:
 
       - name: Verify package contents
         run: bun pm pack --dry-run
+
+      - name: Verify packed package in a clean consumer
+        run: bun run test:package

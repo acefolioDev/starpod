@@ -2,7 +2,7 @@
 
 An enterprise-friendly structure for Elysia applications: explicit constructor DI, feature boundaries, and native Elysia routes in controllers. TypeScript only. No decorators.
 
-> Current status: working alpha. The core runtime, explicit DI, native routes, configuration, error handling, health checks, adapter-based authentication, optional tenant context, request logging, bounded development inspection, vendor-neutral tracing and metrics boundaries, security headers, database lifecycle/transaction boundaries, deterministic migration orchestration, in-process events, typed in-process jobs and scheduling, cache primitives, and rate-limit primitives are implemented. Vendor database adapters, durable queues/schedulers, distributed event delivery, distributed caching/rate limiting, full OpenTelemetry integration, and release hardening are still application-owned or planned.
+> Current status: working alpha. The core runtime, explicit DI, native routes, configuration, error handling, health checks, adapter-based authentication, optional tenant context, request/correlation identity, request logging, bounded development inspection, vendor-neutral tracing and metrics boundaries, security headers, CSRF protection for cookie-authenticated routes, database lifecycle/transaction boundaries, deterministic migration orchestration, in-process events, typed in-process jobs and scheduling, cache primitives, rate-limit primitives, and a dependency-free outbound HTTP client are implemented. Vendor database adapters, durable queues/schedulers, distributed event delivery, distributed caching/rate limiting, full OpenTelemetry integration, and release hardening are still application-owned or planned.
 
 ```bash
 mkdir my-app && cd my-app
@@ -128,7 +128,7 @@ class Controller {
 }
 ```
 
-Inside a native controller route, `resolve(Token)` uses the request's real child container. Use `resolveAsync(Token)` when a request-scoped provider exposes asynchronous `initialize()` work; initialization follows dependency order and is retried after a failed attempt. Request-scoped instances are disposed after the handler completes, while singleton instances remain owned by their application or feature container. Tests can override application or feature providers with a real child scope at bootstrap:
+Inside a native controller route, `resolve(Token)` uses the request's real child container. Use `resolveAsync(Token)` when a request-scoped provider exposes asynchronous `initialize()` work; initialization follows dependency order and is retried after a failed attempt. Request-scoped instances are disposed after ordinary handlers complete and remain alive until native streams or iterators finish, while singleton instances remain owned by their application or feature container. Tests can override application or feature providers with a real child scope at bootstrap:
 
 ```ts
 const server = await bootstrap(app, {
@@ -176,6 +176,10 @@ const server = await bootstrap(app);
 server.get("/openapi.json", () => openApiDocument(server, {
   title: "Users API",
   version: "1.0.0",
+  securitySchemes: {
+    bearer: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
+  },
+  security: [{ bearer: [] }],
 }));
 ```
 
@@ -206,7 +210,7 @@ Bootstrap serializes these into a consistent response shape and hides unexpected
 
 Details are sanitized at the HTTP boundary as well: common secret-shaped fields such as passwords, tokens, authorization headers, cookies, SQL, queries, stacks, and causes are replaced with `[REDACTED]`. Cyclic or non-JSON values are converted to safe markers, so validation diagnostics cannot accidentally break response serialization.
 
-Every request receives a validated `x-request-id` (or a generated one). It is returned on the response and is available to native Elysia handlers as `requestId` through Elysia's derived context.
+Every request receives a validated `x-request-id` (or a generated one). It is returned on the response and is available to native Elysia handlers as `requestId` through Elysia's derived context. `x-correlation-id` is propagated independently for tracing a related group of requests; when it is absent, it falls back to the request ID and is available as `correlationId`.
 
 ## Database integration
 
@@ -264,18 +268,31 @@ Use `inspectConfig(definition)` for diagnostics. Values declared with `env.secre
 
 ## Graceful shutdown
 
-Starpod keeps shutdown explicit and uses Elysia's native `stop()` method:
+For the normal server entrypoint, `start` composes bootstrap, native Elysia `listen()`, and signal cleanup:
 
 ```ts
-import { installGracefulShutdown } from "starpod";
+import { start } from "starpod";
 
+const { server } = await start(app, {
+  listen: config.port,
+});
+```
+
+`start` still returns the native Elysia server. It is a convenience boundary, not a replacement for Elysia.
+
+For embedded runtimes or when startup ownership must remain completely manual, keep bootstrap and use Elysia's native `stop()` method directly:
+
+```ts
+import { bootstrap, installGracefulShutdown } from "starpod";
+
+const server = await bootstrap(app);
 server.listen(config.port);
 installGracefulShutdown(server, {
   onError: (error) => console.error("shutdown failed", error),
 });
 ```
 
-The helper listens for `SIGINT` and `SIGTERM`, stops the server once, and returns a cleanup function for embedded runtimes and tests. It does not install signal handlers during `bootstrap`.
+The helper listens for `SIGINT` and `SIGTERM`, stops the server once, removes its signal handlers after shutdown, and returns a cleanup function for embedded runtimes and tests. It does not install signal handlers during `bootstrap`.
 
 Providers may expose `initialize()` and `dispose()` for lifecycle management. Starpod initializes shared providers before feature providers, and cleans up feature scopes before shared application providers when Elysia stops.
 
@@ -330,6 +347,19 @@ const server = await bootstrap(app, {
 
 Use `requireUser`, `requireRole`, and `requirePermission` close to business logic. Applications remain responsible for choosing and securely configuring their identity provider.
 
+For other identity inputs, use the explicit extractors and keep verification in the authenticator:
+
+```ts
+import { apiKeyFrom, authentication, cookieValue } from "starpod";
+
+const auth = authentication(async (request) => {
+  const key = apiKeyFrom(request) ?? cookieValue(request, "session");
+  return key ? verifyWithYourIdentityProvider(key) : null;
+});
+```
+
+API keys are read from headers only; cookie parsing matches exact names and rejects invalid percent-encoding. Starpod does not invent session storage, token formats, password hashing, or cryptographic protocols.
+
 For resource-level rules, define an explicit policy next to the domain logic:
 
 ```ts
@@ -371,6 +401,25 @@ class ReportsController {
 ```
 
 Use `tenantKey(tenant.id, key)` when composing cache, lock, or other store keys. Starpod makes tenant selection and key namespacing explicit; database row isolation, authorization policy, and cross-tenant guarantees remain application responsibilities.
+
+## External HTTP services
+
+For outbound APIs, `HttpClient` adds only the production concerns that are easy to get wrong around native `fetch`: per-attempt timeouts, bounded parsed responses, safe retries for idempotent methods, structured failures, and value-free telemetry.
+
+```ts
+import { HttpClient, httpExponentialBackoff } from "starpod";
+
+const payments = new HttpClient({
+  baseUrl: config.paymentsUrl,
+  timeoutMs: 5_000,
+  retries: 2,
+  retryDelayMs: httpExponentialBackoff(100),
+});
+
+const payment = await payments.json<Payment>(`/payments/${paymentId}`);
+```
+
+`request()` preserves normal `fetch` behavior and returns non-2xx responses as `Response` objects. `json()` throws `HttpClientError` for non-2xx responses or invalid JSON. Retries default to `GET`, `HEAD`, and `OPTIONS`; writes are never retried unless `retryMethods` explicitly includes them. URLs in errors and telemetry omit credentials, query values, and fragments. Register the client as a normal Starpod provider when it is shared by services.
 
 ## Typed events
 
@@ -570,6 +619,20 @@ const server = await bootstrap(app, {
 
 Wildcard origins cannot be combined with credentials. Unknown origins receive no CORS permission, and preflight methods or headers outside the allowlist are rejected.
 
+For browser routes authenticated with cookies, apply explicit double-submit CSRF protection. Bearer-only APIs do not need this plugin:
+
+```ts
+import { csrfProtection, csrfToken } from "starpod";
+
+const token = csrfToken();
+// Set token in a non-HttpOnly, Secure, SameSite cookie from your session flow.
+const server = await bootstrap(app, {
+  configure: (elysia) => csrfProtection()(elysia),
+});
+```
+
+Mutating requests must send the same token in the configured cookie and `x-csrf-token` header. Starpod validates the comparison; the application remains responsible for setting cookie attributes and associating the token with its session policy.
+
 ## Rate limiting
 
 Rate limiting is an explicit native Elysia hook. The built-in store is bounded and process-local; use a shared atomic store for horizontally scaled deployments:
@@ -586,7 +649,7 @@ const server = await bootstrap(app, {
 });
 ```
 
-The hook emits standard rate-limit headers and `Retry-After` on rejected requests. A custom `RateLimitStore` must make `consume` atomic for its deployment, such as with Redis or another shared data store.
+The hook emits standard `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers plus `Retry-After` on rejected requests. Legacy `X-RateLimit-*` aliases are also emitted during the alpha period. A custom `RateLimitStore` must make `consume` atomic for its deployment, such as with Redis or another shared data store.
 
 ## Testing
 
@@ -610,11 +673,14 @@ Run the framework checks and release build with:
 ```bash
 bun run check
 bun run build
+```
 
 For a project-level architecture report, use the CLI audit command. It exits non-zero when the filesystem conventions or explicit DI graph are invalid, and supports JSON output for CI:
 
-    bunx starpod audit
-    bunx starpod audit --json
+```bash
+bunx starpod audit
+bunx starpod audit --json
+```
 ```
 
 ## Production boundary

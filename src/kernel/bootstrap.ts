@@ -10,7 +10,12 @@ import {
 } from "./di";
 import type { Application } from "./feature";
 import { PayloadTooLarge, serializeError } from "./errors";
-import { requestIdFrom, REQUEST_ID_HEADER } from "./http";
+import {
+  correlationIdFrom,
+  CORRELATION_ID_HEADER,
+  requestIdFrom,
+  REQUEST_ID_HEADER,
+} from "./http";
 import type { Inspector } from "./inspector";
 import {
   durationMilliseconds,
@@ -68,6 +73,7 @@ export async function bootstrap(app: Application, options: BootstrapOptions = {}
   validateMaxRequestBodyBytes(maxRequestBodyBytes);
 
   const requestIds = new WeakMap<Request, string>();
+  const correlationIds = new WeakMap<Request, string>();
   const requestStartedAt = new WeakMap<Request, number>();
   const requestRoutes = new WeakMap<Request, string>();
   const requestScopes = new WeakMap<Request, Container>();
@@ -103,10 +109,13 @@ export async function bootstrap(app: Application, options: BootstrapOptions = {}
     })
     .derive({ as: "global" }, ({ request, set, route }) => {
       const requestId = requestIdFrom(request.headers);
+      const correlationId = correlationIdFrom(request.headers, requestId);
       requestIds.set(request, requestId);
+      correlationIds.set(request, correlationId);
       requestRoutes.set(request, route);
       requestStartedAt.set(request, performance.now());
       set.headers[REQUEST_ID_HEADER] = requestId;
+      set.headers[CORRELATION_ID_HEADER] = correlationId;
       if (options.securityHeaders !== false) {
         applySecurityHeaders(set.headers, options.securityHeaders);
       }
@@ -116,16 +125,19 @@ export async function bootstrap(app: Application, options: BootstrapOptions = {}
             "http.method": request.method,
             "http.route": route,
             "starpod.request.id": requestId,
+            "starpod.correlation.id": correlationId,
           }));
         } catch (error) {
           options.logger?.error("telemetry.span.start.error", {
             requestId,
+            correlationId,
             error: error instanceof Error ? error.message : String(error),
           });
         }
       }
       return {
         requestId,
+        correlationId,
         resolve: <T>(token: InjectionToken<T>) => {
           return requestContainerFor(request).resolve(token);
         },
@@ -136,14 +148,17 @@ export async function bootstrap(app: Application, options: BootstrapOptions = {}
     })
     .onError(async ({ error, request, set }) => {
       const requestId = requestIds.get(request) ?? requestIdFrom(request.headers);
+      const correlationId = correlationIds.get(request) ?? correlationIdFrom(request.headers, requestId);
       const serialized = serializeError(error, {
         development: environment !== "production",
         requestId,
       });
       set.status = serialized.status;
       set.headers[REQUEST_ID_HEADER] = requestId;
+      set.headers[CORRELATION_ID_HEADER] = correlationId;
       options.logger?.error("http.request.error", {
         requestId,
+        correlationId,
         method: request.method,
         path: pathFromUrl(request.url),
         status: serialized.status,
@@ -169,6 +184,7 @@ export async function bootstrap(app: Application, options: BootstrapOptions = {}
         options.inspector,
         options.logger,
         requestId,
+        correlationId,
         serialized.payload.error.code,
       );
       await disposeRequestScope(request, requestScopes, activeRequestScopes, options.logger, requestId);
@@ -183,14 +199,16 @@ export async function bootstrap(app: Application, options: BootstrapOptions = {}
         requestIds.get(request),
       );
     })
-    .onAfterHandle(async ({ request, set }) => {
-      await disposeRequestScope(
-        request,
-        requestScopes,
-        activeRequestScopes,
-        options.logger,
-        requestIds.get(request),
-      );
+    .onAfterHandle(async ({ request, set, responseValue }) => {
+      if (!isStreamingResponse(responseValue)) {
+        await disposeRequestScope(
+          request,
+          requestScopes,
+          activeRequestScopes,
+          options.logger,
+          requestIds.get(request),
+        );
+      }
       finishSpan(
         request,
         typeof set.status === "number" ? set.status : 200,
@@ -219,10 +237,13 @@ export async function bootstrap(app: Application, options: BootstrapOptions = {}
         options.inspector,
         options.logger,
         requestIds.get(request),
+        correlationIds.get(request),
       );
       const requestId = requestIds.get(request);
+      const correlationId = correlationIds.get(request);
       options.logger?.info("http.request", {
         ...(requestId ? { requestId } : {}),
+        ...(correlationId ? { correlationId } : {}),
         method: request.method,
         path: pathFromUrl(request.url),
         status: typeof set.status === "number" ? set.status : 200,
@@ -327,6 +348,13 @@ function durationFor(request: Request, startedAt: WeakMap<Request, number>) {
   return start === undefined ? undefined : durationMilliseconds(start);
 }
 
+function isStreamingResponse(value: unknown): boolean {
+  if (typeof Response !== "undefined" && value instanceof Response) return value.body !== null;
+  if (typeof ReadableStream !== "undefined" && value instanceof ReadableStream) return true;
+  if (typeof value !== "object" || value === null) return false;
+  return Symbol.asyncIterator in value || Symbol.iterator in value;
+}
+
 async function disposeScopes(scopes: readonly Container[], root: Container, parent?: Container) {
   const failures: unknown[] = [];
   for (const scope of [...scopes].reverse()) {
@@ -427,6 +455,7 @@ function recordRequestInspector(
   inspector: Inspector | undefined,
   logger: Logger | undefined,
   requestId: string | undefined,
+  correlationId: string | undefined,
   errorCode?: string,
 ) {
   if (!inspector || recorded.has(request)) return;
@@ -437,6 +466,7 @@ function recordRequestInspector(
     inspector.record({
       type: "http.request",
       ...(requestId ? { requestId } : {}),
+      ...(correlationId ? { correlationId } : {}),
       method: request.method,
       route: routes.get(request) ?? "unknown",
       status,
@@ -446,6 +476,7 @@ function recordRequestInspector(
   } catch (error) {
     logger?.error("inspector.record.error", {
       ...(requestId ? { requestId } : {}),
+      ...(correlationId ? { correlationId } : {}),
       error: error instanceof Error ? error.message : String(error),
     });
   }

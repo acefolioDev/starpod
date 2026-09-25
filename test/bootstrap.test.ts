@@ -176,4 +176,27 @@ describe("bootstrap safety", () => {
     expect(response.status).toBe(200);
     expect(await response.text()).toBe("ready");
   });
+
+  test("propagates request and correlation identity through native context and headers", async () => {
+    class Controller {
+      routes(app: StarpodElysia) {
+        return app.get("/", ({ requestId, correlationId }) => ({ requestId, correlationId }));
+      }
+    }
+
+    const server = await bootstrap(
+      application({
+        features: [pod({ name: "identity", prefix: "/identity", controller: Controller })],
+      }),
+      { printFeatures: false, seal: false },
+    );
+
+    const response = await server.handle(new Request("http://localhost/identity/", {
+      headers: { "x-request-id": "request-1", "x-correlation-id": "group-1" },
+    }));
+
+    expect(response.headers.get("x-request-id")).toBe("request-1");
+    expect(response.headers.get("x-correlation-id")).toBe("group-1");
+    expect(await response.json()).toEqual({ requestId: "request-1", correlationId: "group-1" });
+  });
 });

@@ -21,6 +21,10 @@ describe("OpenAPI document", () => {
       title: "Users API",
       version: "1.0.0",
       description: "A test API",
+      securitySchemes: {
+        bearer: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
+      },
+      security: [{ bearer: [] }],
     });
 
     expect(document).toMatchObject({
@@ -51,7 +55,11 @@ describe("OpenAPI document", () => {
             properties: { error: { type: "object" } },
           },
         },
+        securitySchemes: {
+          bearer: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
+        },
       },
+      security: [{ bearer: [] }],
     });
     expect(document.paths["/users/{id}"]?.get).toMatchObject({
       responses: {

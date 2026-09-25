@@ -27,6 +27,12 @@ export {
   type GracefulShutdownOptions,
   type ShutdownSignal,
 } from "./lifecycle";
+export {
+  start,
+  type ListenOptions,
+  type StartOptions,
+  type StartedApplication,
+} from "./start";
 export { schema } from "./schema";
 export {
   auditArchitecture,
@@ -69,12 +75,26 @@ export {
 } from "./di";
 export {
   REQUEST_ID_HEADER,
+  CORRELATION_ID_HEADER,
+  correlationIdFrom,
   requestIdFrom,
   type AsyncRequestResolver,
   type RequestResolver,
   type StarpodElysia,
   type StarpodSingleton,
 } from "./http";
+export {
+  HttpClient,
+  HttpClientError,
+  httpExponentialBackoff,
+  type FetchImplementation,
+  type HttpClientErrorCode,
+  type HttpClientErrorOptions,
+  type HttpClientEvent,
+  type HttpClientObserver,
+  type HttpClientOptions,
+  type HttpRequestOptions,
+} from "./http-client";
 export {
   ConfigError,
   defineConfig,
@@ -90,6 +110,8 @@ export {
   type OpenApiDocument,
   type OpenApiDocumentOptions,
   type OpenApiSchema,
+  type OpenApiSecurityRequirement,
+  type OpenApiSecurityScheme,
 } from "./openapi";
 export {
   consoleLogger,
@@ -126,6 +148,7 @@ export {
   type TenancyOptions,
 } from "./tenant";
 export { cors, type CorsOptions, type CorsOrigin } from "./cors";
+export { csrfProtection, csrfToken, type CsrfOptions } from "./csrf";
 export {
   MemoryCache,
   type CacheEvent,
@@ -167,12 +190,15 @@ export {
 } from "./rate-limit";
 export {
   authentication,
+  apiKeyFrom,
   bearerToken,
+  cookieValue,
   requirePermission,
   requireRole,
   requireUser,
   type AuthenticatedElysia,
   type AuthenticatedSingleton,
+  type ApiKeyOptions,
   type AuthenticationOptions,
   type Authenticator,
   type Principal,

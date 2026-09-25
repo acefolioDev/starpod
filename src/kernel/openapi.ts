@@ -2,11 +2,43 @@ import type { AnyElysia, DocumentDecoration } from "elysia";
 
 export type OpenApiSchema = Readonly<Record<string, unknown>>;
 
+export type OpenApiSecurityScheme =
+  | Readonly<{
+      readonly type: "apiKey";
+      readonly name: string;
+      readonly in: "header" | "query" | "cookie";
+      readonly description?: string;
+    }>
+  | Readonly<{
+      readonly type: "http";
+      readonly scheme: string;
+      readonly bearerFormat?: string;
+      readonly description?: string;
+    }>
+  | Readonly<{
+      readonly type: "oauth2";
+      readonly flows: Readonly<Record<string, unknown>>;
+      readonly description?: string;
+    }>
+  | Readonly<{
+      readonly type: "openIdConnect";
+      readonly openIdConnectUrl: string;
+      readonly description?: string;
+    }>
+  | Readonly<{
+      readonly type: "mutualTLS";
+      readonly description?: string;
+    }>;
+
+export type OpenApiSecurityRequirement = Readonly<Record<string, readonly string[]>>;
+
 export type OpenApiDocumentOptions = {
   readonly title: string;
   readonly version: string;
   readonly description?: string;
   readonly servers?: readonly { readonly url: string; readonly description?: string }[];
+  readonly securitySchemes?: Readonly<Record<string, OpenApiSecurityScheme>>;
+  readonly security?: readonly OpenApiSecurityRequirement[];
   /** Standard Starpod error statuses to add when a route has not declared them. */
   readonly standardErrorResponses?: readonly number[];
 };
@@ -21,8 +53,10 @@ export type OpenApiDocument = {
   readonly servers?: readonly { readonly url: string; readonly description?: string }[];
   readonly paths: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
   readonly components?: {
-    readonly schemas: Readonly<Record<string, OpenApiSchema>>;
+    readonly schemas?: Readonly<Record<string, OpenApiSchema>>;
+    readonly securitySchemes?: Readonly<Record<string, OpenApiSecurityScheme>>;
   };
+  readonly security?: readonly OpenApiSecurityRequirement[];
 };
 
 const DEFAULT_ERROR_STATUSES = [400, 401, 403, 404, 409, 413, 422, 429, 500] as const;
@@ -63,6 +97,13 @@ export function openApiDocument(app: AnyElysia, options: OpenApiDocumentOptions)
     paths[path] = pathItem;
   }
 
+  const components = {
+    ...(errorStatuses.length > 0 ? { schemas: Object.freeze({ ErrorPayload: ERROR_SCHEMA }) } : {}),
+    ...(options.securitySchemes
+      ? { securitySchemes: Object.freeze({ ...options.securitySchemes }) }
+      : {}),
+  };
+
   return Object.freeze({
     openapi: "3.1.0",
     info: Object.freeze({
@@ -76,9 +117,8 @@ export function openApiDocument(app: AnyElysia, options: OpenApiDocumentOptions)
         Object.entries(paths).map(([path, operations]) => [path, Object.freeze(operations)]),
       ),
     ),
-    ...(errorStatuses.length > 0
-      ? { components: Object.freeze({ schemas: Object.freeze({ ErrorPayload: ERROR_SCHEMA }) }) }
-      : {}),
+    ...(Object.keys(components).length > 0 ? { components: Object.freeze(components) } : {}),
+    ...(options.security ? { security: Object.freeze([...options.security]) } : {}),
   });
 }
 

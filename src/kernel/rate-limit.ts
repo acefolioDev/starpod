@@ -5,6 +5,7 @@ export type RateLimitDecision = {
   readonly allowed: boolean;
   readonly limit: number;
   readonly remaining: number;
+  /** Absolute epoch time in milliseconds when the current window resets. */
   readonly resetAt: number;
 };
 
@@ -85,6 +86,11 @@ export function rateLimit(options: RateLimitOptions) {
     if (!identity || identity.trim() === "") throw new Error("rateLimit key must return a non-empty string");
 
     const decision = await store.consume(`${name}:${identity}`, options.limit, options.windowMs);
+    const resetInSeconds = Math.max(0, Math.ceil((decision.resetAt - now()) / 1000));
+    set.headers["ratelimit-limit"] = String(decision.limit);
+    set.headers["ratelimit-remaining"] = String(decision.remaining);
+    set.headers["ratelimit-reset"] = String(resetInSeconds);
+    // Keep the widely used legacy names during the alpha period.
     set.headers["x-ratelimit-limit"] = String(decision.limit);
     set.headers["x-ratelimit-remaining"] = String(decision.remaining);
     set.headers["x-ratelimit-reset"] = String(Math.ceil(decision.resetAt / 1000));

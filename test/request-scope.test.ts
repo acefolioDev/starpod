@@ -119,4 +119,39 @@ describe("native request DI", () => {
     expect(await response.json()).toEqual({ initialized: true });
     expect(events).toEqual(["initialize", "dispose"]);
   });
+
+  test("keeps request resources alive while a native stream is being consumed", async () => {
+    const events: string[] = [];
+
+    class StreamResource {
+      static readonly lifetime = "request" as const;
+
+      dispose() {
+        events.push("dispose");
+      }
+    }
+
+    class Controller {
+      routes(app: StarpodElysia) {
+        return app.get("/", async function* ({ resolve }) {
+          resolve(StreamResource);
+          yield "first";
+          await new Promise((done) => setTimeout(done, 5));
+          yield "second";
+        });
+      }
+    }
+
+    const server = await bootstrap(
+      application({
+        features: [pod({ name: "stream", prefix: "/stream", controller: Controller, providers: [StreamResource] })],
+      }),
+      { printFeatures: false, seal: false },
+    );
+
+    const response = await server.handle(new Request("http://localhost/stream/"));
+    expect(events).toEqual([]);
+    expect(await response.text()).toContain("first");
+    expect(events).toEqual(["dispose"]);
+  });
 });

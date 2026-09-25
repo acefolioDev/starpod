@@ -45,13 +45,17 @@ export function installGracefulShutdown(
   const shutdown = createGracefulShutdown(server, options);
 
   const handlers = new Map<ShutdownSignal, () => void>();
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    for (const [signal, handler] of handlers) process.off(signal, handler);
+  };
   for (const signal of signals) {
-    const handler = () => void shutdown(signal);
+    const handler = () => void shutdown(signal).finally(cleanup);
     handlers.set(signal, handler);
     process.on(signal, handler);
   }
 
-  return () => {
-    for (const [signal, handler] of handlers) process.off(signal, handler);
-  };
+  return cleanup;
 }

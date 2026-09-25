@@ -15,6 +15,13 @@ export type AuthenticationOptions = {
   readonly required?: boolean;
 };
 
+export type ApiKeyOptions = {
+  /** Defaults to `x-api-key`. */
+  readonly header?: string;
+  /** Optional exact prefix such as `Api-Key `. */
+  readonly prefix?: string;
+};
+
 export type AuthenticatedSingleton<TPrincipal> = Omit<StarpodSingleton, "resolve"> & {
   readonly resolve: {
     readonly user: TPrincipal | null;
@@ -29,6 +36,36 @@ export function bearerToken(request: Request): string | undefined {
   if (!authorization) return undefined;
   const match = /^Bearer\s+([^\s]+)$/i.exec(authorization.trim());
   return match?.[1];
+}
+
+/** Read an API key from an explicit header without accepting query parameters. */
+export function apiKeyFrom(request: Request, options: ApiKeyOptions = {}): string | undefined {
+  const value = request.headers.get(options.header ?? "x-api-key")?.trim();
+  if (!value || value.length > 4_096) return undefined;
+  if (options.prefix === undefined) return value;
+  if (!value.startsWith(options.prefix)) return undefined;
+  const key = value.slice(options.prefix.length).trim();
+  return key && key.length <= 4_096 ? key : undefined;
+}
+
+/** Read one exact cookie value. Invalid percent-encoding is rejected. */
+export function cookieValue(request: Request, name: string): string | undefined {
+  if (!COOKIE_NAME_PATTERN.test(name)) return undefined;
+  const header = request.headers.get("cookie");
+  if (!header) return undefined;
+
+  for (const part of header.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator < 1 || part.slice(0, separator).trim() !== name) continue;
+    const raw = part.slice(separator + 1).trim();
+    const value = raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1) : raw;
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
 }
 
 export function authentication<TPrincipal>(
@@ -58,3 +95,5 @@ export function requirePermission(user: Principal | null | undefined, permission
   if (!principal.permissions?.includes(permission)) throw Forbidden();
   return principal;
 }
+
+const COOKIE_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;

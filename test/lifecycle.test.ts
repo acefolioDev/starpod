@@ -46,4 +46,20 @@ describe("graceful shutdown", () => {
     cleanup();
     expect(process.listenerCount("SIGTERM")).toBe(before);
   });
+
+  test("removes signal handlers after a signal-triggered stop", async () => {
+    const before = process.listenerCount("SIGTERM");
+    let stopped = 0;
+    installGracefulShutdown(
+      { stop: async () => { stopped += 1; } },
+      { signals: ["SIGTERM"] },
+    );
+
+    expect(process.listenerCount("SIGTERM")).toBe(before + 1);
+    process.emit("SIGTERM");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(stopped).toBe(1);
+    expect(process.listenerCount("SIGTERM")).toBe(before);
+  });
 });

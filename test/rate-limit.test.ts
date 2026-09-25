@@ -42,7 +42,11 @@ describe("rate limiting", () => {
 
     expect(first.status).toBe(200);
     expect(first.headers.get("x-ratelimit-remaining")).toBe("0");
+    expect(first.headers.get("ratelimit-limit")).toBe("1");
+    expect(first.headers.get("ratelimit-remaining")).toBe("0");
+    expect(first.headers.get("ratelimit-reset")).toBe("10");
     expect(second.status).toBe(429);
+    expect(second.headers.get("ratelimit-reset")).toBe("10");
     expect(second.headers.get("retry-after")).toBe("10");
     expect(await second.json()).toEqual({
       error: {
