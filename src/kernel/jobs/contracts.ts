@@ -1,10 +1,12 @@
 import { assertJsonValue, type JsonValue } from "../serialization/wire";
+import type { JobProgress } from "./progress";
 
 export type JobContext = {
   readonly id: string;
   readonly name: string;
   readonly attempt: number;
   readonly signal: AbortSignal;
+  readonly reportProgress: (progress: JobProgress) => void;
 };
 
 export type JobPayloadValue = JsonValue;
@@ -55,6 +57,7 @@ export type JobEvent =
   | { readonly operation: "dispatch"; readonly id: string; readonly name: string }
   | { readonly operation: "start"; readonly id: string; readonly name: string; readonly attempt: number }
   | { readonly operation: "success"; readonly id: string; readonly name: string; readonly attempt: number }
+  | { readonly operation: "progress"; readonly id: string; readonly name: string; readonly attempt: number; readonly completed: number; readonly total?: number }
   | { readonly operation: "retry"; readonly id: string; readonly name: string; readonly attempt: number; readonly delayMs: number }
   | { readonly operation: "dead-letter"; readonly id: string; readonly name: string; readonly attempts: number }
   | { readonly operation: "cancel"; readonly id: string; readonly name: string };
@@ -86,13 +89,20 @@ export type JobEnvelopePublisher = {
   publish(envelope: JobEnvelope): Promise<JobReceipt>;
 };
 
+export type DurableJobDispatcherOptions = {
+  readonly onEvent?: JobObserver;
+};
+
 /**
  * Encode typed jobs before handing them to an application-owned durable
  * transport. Handler closures never cross this boundary; workers resolve the
  * name through JobRegistry and decode the persisted payload.
  */
 export class DurableJobDispatcher {
-  constructor(private readonly publisher: JobEnvelopePublisher) {}
+  constructor(
+    private readonly publisher: JobEnvelopePublisher,
+    private readonly options: DurableJobDispatcherOptions = {},
+  ) {}
 
   async dispatch<TPayload>(
     job: JobDefinition<TPayload>,
@@ -103,6 +113,11 @@ export class DurableJobDispatcher {
     const receipt = await this.publisher.publish(envelope);
     if (!receipt || receipt.name !== envelope.name || !receipt.id) {
       throw new Error(`durable publisher returned an invalid receipt for job "${envelope.name}"`);
+    }
+    try {
+      this.options.onEvent?.({ operation: "dispatch", id: receipt.id, name: receipt.name });
+    } catch {
+      // Durable job telemetry must not change publisher correctness.
     }
     return receipt;
   }

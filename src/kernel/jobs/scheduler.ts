@@ -14,12 +14,20 @@ export type ScheduledTask = {
 
 export type InMemorySchedulerOptions = {
   readonly onError?: (error: unknown) => void | Promise<void>;
+  readonly onEvent?: (event: SchedulerEvent) => void;
+  readonly now?: () => number;
 };
+
+export type SchedulerEvent =
+  | { readonly operation: "schedule" | "start" | "cancel"; readonly name: string }
+  | { readonly operation: "success" | "failure"; readonly name: string; readonly durationMs: number };
 
 /** Fixed-delay in-process scheduling over a typed JobQueue. */
 export class InMemoryScheduler {
   private readonly tasks = new Set<InMemoryScheduledTask>();
   private readonly onError: ((error: unknown) => void | Promise<void>) | undefined;
+  private readonly onEvent: ((event: SchedulerEvent) => void) | undefined;
+  private readonly now: () => number;
   private disposed = false;
 
   constructor(
@@ -27,6 +35,8 @@ export class InMemoryScheduler {
     options: InMemorySchedulerOptions = {},
   ) {
     this.onError = options.onError;
+    this.onEvent = options.onEvent;
+    this.now = options.now ?? (() => performance.now());
   }
 
   schedule<TPayload>(
@@ -54,6 +64,7 @@ export class InMemoryScheduler {
     validateSchedule(options);
 
     const task = new InMemoryScheduledTask(
+      job.name,
       async () => {
         const value = await factory();
         await this.queue.dispatch(job, value, options.jobOptions);
@@ -67,8 +78,11 @@ export class InMemoryScheduler {
         }
       },
       () => this.tasks.delete(task),
+      (event) => this.observe(event),
+      () => this.now(),
     );
     this.tasks.add(task);
+    this.observe({ operation: "schedule", name: job.name });
     task.start();
     return task;
   }
@@ -81,6 +95,14 @@ export class InMemoryScheduler {
     await Promise.all(tasks.map((task) => task.idle()));
     this.tasks.clear();
   }
+
+  private observe(event: SchedulerEvent) {
+    try {
+      this.onEvent?.(event);
+    } catch {
+      // Scheduler telemetry must not terminate the scheduling loop.
+    }
+  }
 }
 
 class InMemoryScheduledTask implements ScheduledTask {
@@ -89,10 +111,13 @@ class InMemoryScheduledTask implements ScheduledTask {
   private cancelled = false;
 
   constructor(
+    private readonly name: string,
     private readonly run: () => Promise<void>,
     private readonly options: ScheduleOptions,
     private readonly onError: (error: unknown) => Promise<void>,
     private readonly onComplete: () => void,
+    private readonly onEvent: (event: SchedulerEvent) => void,
+    private readonly now: () => number,
   ) {}
 
   start() {
@@ -105,6 +130,7 @@ class InMemoryScheduledTask implements ScheduledTask {
     this.cancelled = true;
     if (this.timer) clearTimeout(this.timer);
     this.timer = undefined;
+    this.onEvent({ operation: "cancel", name: this.name });
     if (!this.running) this.onComplete();
   }
 
@@ -118,10 +144,14 @@ class InMemoryScheduledTask implements ScheduledTask {
 
   private async execute() {
     if (this.cancelled) return;
+    const startedAt = this.now();
+    this.onEvent({ operation: "start", name: this.name });
     this.running = (async () => {
       try {
         await this.run();
+        this.onEvent({ operation: "success", name: this.name, durationMs: this.duration(startedAt) });
       } catch (error) {
+        this.onEvent({ operation: "failure", name: this.name, durationMs: this.duration(startedAt) });
         await this.onError(error);
       } finally {
         this.running = undefined;
@@ -133,6 +163,10 @@ class InMemoryScheduledTask implements ScheduledTask {
       }
     })();
     await this.running;
+  }
+
+  private duration(startedAt: number) {
+    return Math.max(0, Math.round((this.now() - startedAt) * 100) / 100);
   }
 }
 function validateSchedule(options: ScheduleOptions) {

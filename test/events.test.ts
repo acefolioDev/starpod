@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { EventBus, EventDispatcher, EventRegistry } from "../src/kernel/events/events";
+import { EventBus, EventConsumer, EventDispatcher, EventRegistry } from "../src/kernel/events/events";
 import type { JsonValue } from "../src/kernel/serialization/wire";
 
 type Events = {
@@ -129,5 +129,60 @@ describe("EventDispatcher", () => {
       version: "1",
       payload: { userId: "user-1" },
     }]);
+  });
+});
+
+describe("EventConsumer", () => {
+  test("decodes broker envelopes and delivers them through typed handlers", async () => {
+    const registry = new EventRegistry<Events>();
+    registry.register("user.created", {
+      version: "1",
+      encode: (payload) => payload,
+      decode: (payload) => payload as Events["user.created"],
+    });
+    const bus = new EventBus<Events>();
+    const received: string[] = [];
+    bus.on("user.created", ({ id }) => { received.push(id); });
+    const consumer = new EventConsumer(registry, bus);
+
+    await consumer.consume({
+      name: "user.created",
+      version: "1",
+      payload: { id: "user-1" },
+    });
+
+    expect(received).toEqual(["user-1"]);
+    await expect(consumer.consume({
+      name: "user.created",
+      version: "2",
+      payload: { id: "user-1" },
+    })).rejects.toThrow("version mismatch");
+  });
+
+  test("delegates duplicate delivery to an atomic idempotency store", async () => {
+    const registry = new EventRegistry<Events>();
+    registry.register("user.created", {
+      encode: (payload) => payload,
+      decode: (payload) => payload as Events["user.created"],
+    });
+    let calls = 0;
+    const bus = new EventBus<Events>();
+    bus.on("user.created", () => { calls += 1; });
+    const ids: string[] = [];
+    const consumer = new EventConsumer(registry, bus, {
+      idempotency: {
+        runOnce: async (id, work) => {
+          ids.push(id);
+          if (ids.length === 1) await work();
+        },
+      },
+    });
+
+    const delivery = { id: "event-1", name: "user.created", payload: { id: "user-1" } } as const;
+    await consumer.consume(delivery);
+    await consumer.consume(delivery);
+
+    expect(ids).toEqual(["event-1", "event-1"]);
+    expect(calls).toBe(1);
   });
 });

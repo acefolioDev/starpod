@@ -71,6 +71,19 @@ describe("health routes", () => {
     expect(maximumActive).toBe(2);
   });
 
+  test("fails readiness once the native server begins stopping", async () => {
+    const app = healthRoutes(new Elysia());
+    app.listen(0);
+    await app.stop();
+
+    const ready = await app.handle(new Request("http://localhost/health/ready"));
+    const live = await app.handle(new Request("http://localhost/health/live"));
+
+    expect(ready.status).toBe(503);
+    expect(await ready.json()).toEqual({ status: "not_ready", checks: {} });
+    expect(live.status).toBe(200);
+  });
+
   test("rejects invalid health check timeouts", () => {
     expect(() => healthRoutes(new Elysia(), {
       checks: [{ name: "database", timeoutMs: 0, check: () => undefined }],

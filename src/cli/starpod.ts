@@ -6,6 +6,7 @@ import { bootstrap, disposeBootstrap } from "../kernel/application/bootstrap";
 import { doctor } from "../kernel/diagnostics/doctor";
 import { openApiDocument } from "../kernel/http/openapi";
 import { routeManifest } from "../kernel/http/routes";
+import { generateFeature } from "./generate";
 import { scaffold } from "./scaffold";
 
 const command = process.argv[2] ?? "init";
@@ -53,7 +54,11 @@ async function run(value: string) {
     case "doctor": {
       const appPath = join(process.cwd(), "src/app.ts");
       const app = await Bun.file(appPath).exists() ? await loadApp() : undefined;
-      const report = await doctor({ root: process.cwd(), app });
+      const report = await doctor({
+        root: process.cwd(),
+        app,
+        environment: process.argv.includes("--production") ? "production" : undefined,
+      });
       if (process.argv.includes("--json")) {
         console.log(JSON.stringify(report, null, 2));
       } else {
@@ -66,12 +71,34 @@ async function run(value: string) {
       if (!report.ok) process.exitCode = 1;
       return;
     }
+    case "dev":
+      await runProcess(["--watch", "src/main.ts"]);
+      return;
+    case "start":
+      await runProcess(["src/main.ts"]);
+      return;
+    case "test":
+      await runProjectScript("test");
+      return;
+    case "check":
+      await runProjectScript("check");
+      return;
+    case "build":
+      await runProjectScript("build");
+      return;
+    case "make:feature": {
+      const name = process.argv[3];
+      if (!name) throw new Error("usage: starpod make:feature <name>");
+      const files = await generateFeature(process.cwd(), name);
+      console.log(`\n  ✓  feature created: ${files.join(", ")}\n  │  Add ${name} to application({ features }) in src/app.ts.\n`);
+      return;
+    }
     case "routes": {
       const server = await bootstrap(await loadApp(), { printFeatures: false });
       try {
-        for (const route of routeManifest(server)) {
-          console.log(`${route.method.padEnd(7)} ${route.path}`);
-        }
+        const routes = routeManifest(server);
+        if (process.argv.includes("--json")) console.log(JSON.stringify(routes, null, 2));
+        else for (const route of routes) console.log(`${route.method.padEnd(7)} ${route.path}`);
       } finally {
         await disposeBootstrap(server);
       }
@@ -109,7 +136,29 @@ async function loadApp() {
 async function readPackageJson() {
   const packagePath = join(process.cwd(), "package.json");
   if (!(await Bun.file(packagePath).exists())) return {};
-  return JSON.parse(await Bun.file(packagePath).text()) as { name?: string; version?: string };
+  return JSON.parse(await Bun.file(packagePath).text()) as {
+    name?: string;
+    version?: string;
+    scripts?: Record<string, string>;
+  };
+}
+
+async function runProjectScript(script: string) {
+  const packageJson = await readPackageJson();
+  if (typeof packageJson.scripts?.[script] !== "string") {
+    throw new Error(`package.json has no "${script}" script`);
+  }
+  await runProcess(["run", script]);
+}
+
+async function runProcess(args: readonly string[]) {
+  const child = Bun.spawn(["bun", ...args], {
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  const exitCode = await child.exited;
+  if (exitCode !== 0) process.exitCode = exitCode;
 }
 
 function usage() {
@@ -120,8 +169,15 @@ function usage() {
     "  starpod init       Create the starter application structure",
     "  starpod seal       Validate architecture and the DI graph",
     "  starpod audit      Report architecture findings (add --json for CI)",
-    "  starpod doctor     Check project setup and production hazards",
+    "  starpod doctor     Check project setup and production hazards (add --production)",
+    "  starpod dev        Run src/main.ts with Bun watch mode",
+    "  starpod start      Run src/main.ts",
+    "  starpod test       Run the project's test script",
+    "  starpod check      Run the project's check script",
+    "  starpod build      Run the project's build script",
+    "  starpod make:feature <name>  Create a controller, pod, and service",
     "  starpod routes     Print routes registered by native Elysia APIs",
+    "  starpod routes --json  Print the route manifest as JSON",
     "  starpod openapi    Print an OpenAPI document as JSON",
     "  starpod help       Show this help",
   ].join("\n");

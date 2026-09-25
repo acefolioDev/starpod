@@ -21,6 +21,19 @@ describe("inspector", () => {
     expect(inspector.snapshot()).toEqual([]);
   });
 
+  test("queries recent events by request identity without exposing more history", () => {
+    const inspector = new MemoryInspector({ now: () => 1 });
+    inspector.record({ type: "http.request", requestId: "req-1", correlationId: "corr-1" });
+    inspector.record({ type: "cache.get", requestId: "req-1", correlationId: "corr-1" });
+    inspector.record({ type: "http.request", requestId: "req-2", correlationId: "corr-2" });
+
+    expect(inspector.query({ requestId: "req-1", limit: 1 })).toEqual([
+      expect.objectContaining({ type: "cache.get", requestId: "req-1" }),
+    ]);
+    expect(inspector.query({ type: "http.request", correlationId: "corr-1" })).toHaveLength(1);
+    expect(() => inspector.query({ limit: 0 })).toThrow("positive integer");
+  });
+
   test("records safe native HTTP lifecycle events", async () => {
     const inspector = new MemoryInspector({ now: () => 1 });
     class Controller {

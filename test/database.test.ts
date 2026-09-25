@@ -84,4 +84,28 @@ describe("DatabaseConnection", () => {
     expect(closed).toBe(1);
     expect(database.status).toBe("closed");
   });
+
+  test("emits safe lifecycle events without affecting transactions", async () => {
+    const events: string[] = [];
+    let now = 0;
+    const database = new DatabaseConnection({
+      connect: () => ({ id: "client" }),
+      close: () => undefined,
+      transaction: (_client, work) => work({ id: "transaction" }),
+    }, {
+      now: () => now++,
+      onEvent: (event) => events.push(`${event.operation}:${event.status}`),
+    });
+
+    await database.transaction((transaction) => transaction.id);
+    await database.dispose();
+    expect(events).toEqual([
+      "connect:start",
+      "connect:success",
+      "transaction:start",
+      "transaction:success",
+      "close:start",
+      "close:success",
+    ]);
+  });
 });

@@ -18,6 +18,15 @@ export type RateLimitStore = {
   consume(key: string, limit: number, windowMs: number): RateLimitDecision | Promise<RateLimitDecision>;
 };
 
+export type RateLimitEvent = {
+  readonly operation: "decision";
+  readonly name: string;
+  readonly allowed: boolean;
+  readonly limit: number;
+  readonly remaining: number;
+  readonly resetAt: number;
+};
+
 export type RateLimitOptions = {
   readonly limit: number;
   readonly windowMs: number;
@@ -26,6 +35,7 @@ export type RateLimitOptions = {
   readonly name?: string;
   readonly store?: RateLimitStore;
   readonly skip?: (request: Request) => boolean | Promise<boolean>;
+  readonly onEvent?: (event: RateLimitEvent) => void;
 };
 
 export class MemoryRateLimitStore implements RateLimitStore {
@@ -87,6 +97,15 @@ export function rateLimit(options: RateLimitOptions) {
     if (identity.length > 512) throw new Error("rateLimit key must be at most 512 characters");
 
     const decision = await store.consume(rateLimitKey(name, identity), options.limit, options.windowMs);
+    validateDecision(decision);
+    observe(options.onEvent, {
+      operation: "decision",
+      name,
+      allowed: decision.allowed,
+      limit: decision.limit,
+      remaining: decision.remaining,
+      resetAt: decision.resetAt,
+    });
     const resetInSeconds = Math.max(0, Math.ceil((decision.resetAt - now()) / 1000));
     set.headers["ratelimit-limit"] = String(decision.limit);
     set.headers["ratelimit-remaining"] = String(decision.remaining);
@@ -118,4 +137,21 @@ function validateOptions(options: RateLimitOptions) {
 
 function rateLimitKey(name: string, identity: string) {
   return `${encodeURIComponent(name)}:${encodeURIComponent(identity)}`;
+}
+
+function validateDecision(decision: RateLimitDecision) {
+  if (typeof decision.allowed !== "boolean") throw new Error("rateLimit store returned an invalid allowed value");
+  if (!Number.isInteger(decision.limit) || decision.limit < 1) throw new Error("rateLimit store returned an invalid limit");
+  if (!Number.isInteger(decision.remaining) || decision.remaining < 0 || decision.remaining > decision.limit) {
+    throw new Error("rateLimit store returned an invalid remaining value");
+  }
+  if (!Number.isFinite(decision.resetAt)) throw new Error("rateLimit store returned an invalid resetAt value");
+}
+
+function observe(observer: ((event: RateLimitEvent) => void) | undefined, event: RateLimitEvent) {
+  try {
+    observer?.(event);
+  } catch {
+    // Rate-limit telemetry must not change request protection semantics.
+  }
 }

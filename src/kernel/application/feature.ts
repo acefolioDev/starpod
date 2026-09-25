@@ -1,4 +1,5 @@
 import { providerToken, type Injectable, type Provider } from "../di/di";
+import type { StarpodPlugin } from "./plugins";
 
 /**
  * A route registrar keeps its concrete Elysia type in the controller source.
@@ -27,6 +28,7 @@ export type Application = {
   readonly kind: "application";
   readonly features: readonly Feature[];
   readonly providers: readonly Provider[];
+  readonly plugins: readonly StarpodPlugin[];
 };
 
 export type Pod = Feature;
@@ -44,6 +46,7 @@ export function pod(input: {
   if (!input.prefix.startsWith("/")) {
     throw new Error(`Feature prefix must start with "/"`);
   }
+  assertUnique([...input.uses ?? [], ...input.providers ?? []], "feature provider");
 
   return Object.freeze({
     kind: "feature",
@@ -58,6 +61,7 @@ export function pod(input: {
 export function application(input: {
   features: readonly Feature[];
   providers?: readonly Provider[];
+  plugins?: readonly StarpodPlugin[];
   /** @deprecated Use providers. Kept for a gentle migration from 0.1.x. */
   infra?: readonly Injectable[];
 }): Application {
@@ -67,12 +71,20 @@ export function application(input: {
 
   assertUnique(input.features.map((feature) => feature.name), "feature name");
   assertUnique(input.features.map((feature) => feature.prefix), "feature prefix");
-  assertUnique(input.providers ?? input.infra ?? [], "application provider");
+  if (input.providers !== undefined && input.infra !== undefined) {
+    throw new Error('Use application.providers or deprecated application.infra, not both');
+  }
+  const plugins = input.plugins ?? [];
+  assertUnique(plugins.map((extension) => extension.name), "plugin name");
+  const providers = input.providers ?? input.infra ?? [];
+  const pluginProviders = plugins.flatMap((extension) => extension.providers);
+  assertUnique([...providers, ...pluginProviders], "application provider");
 
   return Object.freeze({
     kind: "application",
     features: Object.freeze([...input.features]),
-    providers: Object.freeze([...(input.providers ?? input.infra ?? [])]),
+    providers: Object.freeze([...providers, ...pluginProviders]),
+    plugins: Object.freeze([...plugins]),
   });
 }
 

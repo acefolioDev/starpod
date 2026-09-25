@@ -8,6 +8,7 @@ import {
 import type { Application } from "../feature";
 import { createBootstrapElysia } from "./hooks";
 import { composeApplication } from "./composition";
+import { applyPlugins } from "../plugins";
 import { printFeatures } from "../print";
 import {
   disposeRequestScope,
@@ -79,6 +80,7 @@ export async function bootstrap(app: Application, options: BootstrapOptions = {}
     activeRequestScopes,
     requestContainerFor,
   });
+  elysia = applyPlugins(elysia, app.plugins) as typeof elysia;
   const configured = options.configure?.(elysia as AnyElysia);
   if (configured) elysia = configured as typeof elysia;
 

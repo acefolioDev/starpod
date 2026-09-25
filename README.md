@@ -2,7 +2,7 @@
 
 An enterprise-friendly structure for Elysia applications: explicit constructor DI, feature boundaries, and native Elysia routes in controllers. TypeScript only. No decorators.
 
-> Current status: working alpha. The core runtime, explicit DI, native routes, configuration, error handling, health checks, adapter-based authentication and sessions, optional tenant context, request/correlation identity, request logging, bounded development inspection, vendor-neutral tracing and metrics boundaries, security headers, CSRF protection for cookie-authenticated routes, ETags for finite responses, database lifecycle/transaction boundaries, deterministic migration orchestration, in-process events, typed in-process jobs and scheduling, cache primitives, rate-limit primitives, an origin-restricted outbound HTTP client, and CLI diagnostics are implemented. Vendor database adapters, durable queues/schedulers, distributed event delivery, distributed caching/rate limiting, full OpenTelemetry integration, and application deployment hardening are still application-owned or planned. Package release contents are covered by build, type, clean-consumer, scaffold, audit, doctor, and pack smoke checks.
+> Current status: working alpha. The core runtime, explicit DI, native routes, named native plugin boundary, configuration, error handling, health checks, adapter-based authentication and sessions, password hashing, brute-force protection, signed URLs, optional tenant context, request/correlation identity, request logging, bounded development inspection, vendor-neutral tracing and metrics boundaries, optional OpenTelemetry tracing/metrics bridges, security headers, CSRF protection for cookie-authenticated routes, ETags for finite responses, database lifecycle/transaction boundaries with database events, deterministic migration orchestration, typed in-process and durable-boundary events/jobs, cache primitives, rate-limit primitives, an origin-restricted outbound HTTP client, and CLI diagnostics are implemented. Vendor database adapters, durable queue/event infrastructure, distributed caching/rate limiting, OpenTelemetry SDK/exporter setup, and application deployment hardening remain application-owned or planned. Package release contents are covered by build, type, clean-consumer, scaffold, audit, doctor, and pack smoke checks.
 
 ```bash
 mkdir my-app && cd my-app
@@ -168,6 +168,31 @@ export const app = application({
 });
 ```
 
+## Plugins
+
+Use a named plugin when native Elysia configuration and the providers it needs belong together:
+
+```ts
+import { application, plugin } from "starpod";
+
+const requestLogging = plugin({
+  name: "request-logging",
+  providers: [RequestLogger],
+  configure: (elysia) => elysia.onRequest(({ request }) => {
+    console.log(request.method, request.url);
+  }),
+});
+
+export const app = application({
+  features: [hello],
+  plugins: [requestLogging],
+});
+```
+
+Plugin providers are normal application providers: constructor injection, lifecycle management, and test overrides continue to work. Plugin configuration receives and returns native Elysia. Use the bootstrap `configure` option for one-off application wiring or when a plugin does not need a name or providers.
+
+Use `providers` for new applications. The deprecated `infra` option is kept for migration compatibility, but combining `providers` and `infra` is rejected so a provider cannot be silently discarded.
+
 The architecture seal checks feature wiring and the complete constructor graph before the server starts. Run it with `bun run seal`.
 
 ## Route inspection
@@ -254,7 +279,7 @@ export const app = application({
 });
 ```
 
-Repositories still use the native client or query builder through `database.use(...)`; migration policy, models, locking, replicas, and SQL remain explicit application or driver concerns. Readiness checks can call `database.ping(signal)` without creating a second connection lifecycle.
+Repositories still use the native client or query builder through `database.use(...)`; migration policy, models, locking, replicas, and SQL remain explicit application or driver concerns. Readiness checks can call `database.ping(signal)` without creating a second connection lifecycle. Pass `onEvent` to observe connection, transaction, and close timings through the same inspector or metrics adapter used elsewhere in the application.
 
 Migration ordering and journal persistence are also explicit:
 
@@ -279,11 +304,15 @@ export const config = defineConfig({
   environment: env.enum("NODE_ENV", ["development", "test", "production"] as const, {
     default: "development",
   }),
+  paymentsUrl: env.url("PAYMENTS_URL", { required: true }),
+  requestTimeoutMs: env.duration("REQUEST_TIMEOUT", { default: 5_000 }),
   databaseUrl: env.secret("DATABASE_URL", { required: true }),
 });
 ```
 
 Missing or invalid values are reported together in one startup error. Tests can pass an explicit source instead of mutating process environment variables.
+
+`env.url` accepts only absolute HTTP(S) URLs without embedded credentials. `env.duration` requires an explicit unit such as `250ms`, `5s`, or `2m` and resolves to milliseconds.
 
 Use `inspectConfig(definition)` for diagnostics. Values declared with `env.secret(...)` are returned as `[REDACTED]`, so configuration inspection can be logged safely.
 
@@ -329,6 +358,31 @@ const server = await bootstrap(app, {
 
 The configurator is an escape hatch into Elysia itself; Starpod does not replace Elysia's plugin or middleware model.
 
+Create a new feature without generating hidden wiring:
+
+```bash
+starpod make:feature billing
+```
+
+This creates `billing.controller.ts`, `billing.pod.ts`, and `billing.service.ts` under `src/features/billing`. Add the exported pod to `application({ features })` yourself so the application graph stays explicit.
+
+## Container deployment
+
+`starpod init` creates a small Bun production baseline with `Dockerfile` and `.dockerignore`. Commit `bun.lock`, then build and run it with:
+
+```bash
+docker build -t my-app .
+docker run --rm -p 3000:3000 -e NODE_ENV=production my-app
+```
+
+The image runs the generated `start` script as the non-root `bun` user. The generated entrypoint includes liveness and readiness routes with no dependency checks; database migrations, readiness policy, secrets, TLS termination, and orchestration policy remain deployment-owned.
+
+`starpod init` also creates `deploy/kubernetes.yaml` with a two-replica Deployment, Service, health probes, non-root settings, and bounded starter resources. Replace the generated image name and resource values for your cluster before applying it:
+
+```bash
+kubectl apply -f deploy/kubernetes.yaml
+```
+
 ## Health endpoints
 
 Use native Elysia health routes for orchestration:
@@ -346,6 +400,8 @@ const server = await bootstrap(app, {
 ```
 
 `/health/live` only reports that the process is running. `/health/ready` runs dependency checks and returns `503` when the application is not ready.
+
+When native Elysia shutdown begins, readiness immediately returns `503` while liveness remains available, allowing an orchestrator to drain traffic before the process exits.
 
 Checks may declare `timeoutMs`; timed-out checks fail readiness and receive an `AbortSignal` so database or network probes can stop their work cooperatively.
 
@@ -457,7 +513,7 @@ class ReportsController {
 }
 ```
 
-Use `tenantKey(tenant.id, key)` when composing cache, lock, or other store keys. Starpod makes tenant selection and key namespacing explicit; database row isolation, authorization policy, and cross-tenant guarantees remain application responsibilities.
+Use `tenantKey(tenant.id, key)` when composing lock or other store keys. For caches, `tenantCache(cache, tenant)` returns the same `CacheStore` API with keys and tags scoped automatically. Starpod makes tenant selection and key namespacing explicit; database row isolation, authorization policy, and cross-tenant guarantees remain application responsibilities.
 
 ## External HTTP services
 
@@ -520,6 +576,20 @@ Distributed adapters still own delivery guarantees such as retries, ordering, co
 
 `EventDispatcher` is the durable-transport bridge: it encodes through the registry and publishes an envelope, while the broker owns delivery, retries, consumer groups, and dead letters.
 
+For broker consumers, register the same codecs and handlers with `EventConsumer`. It validates the envelope version, decodes the payload, and delegates delivery to the normal typed `EventBus`; the broker remains responsible for acknowledgement, retry, ordering, and dead-letter policy. When an envelope has an ID, pass an atomic `EventIdempotencyStore` to make duplicate delivery safe:
+
+```ts
+const consumer = new EventConsumer(registry, bus, { idempotency: deduplicationStore });
+await consumer.consume(envelopeFromBroker);
+```
+
+For a transactional outbox, use `EventOutbox.enqueue(...)` inside the same database transaction as the domain write. Its `EventOutboxStore` must make `append` transactional and `claim` atomic; `publishPending()` publishes claimed records and marks broker failures for a later retry. If marking a successfully published record fails, the record may be delivered again, so consumers must be idempotent:
+
+```ts
+const record = await outbox.enqueue("user.created", { id: user.id }, { transaction });
+await outbox.publishPending(100);
+```
+
 ## Background jobs
 
 Job definitions are typed and can be dispatched through the same application-level contract:
@@ -544,14 +614,14 @@ await jobs.dispatch(sendWelcomeEmail, { userId: user.id }, {
 
 The in-memory runner supports delays, priorities, retries, cooperative timeouts, cancellation through AbortSignal, concurrency, deduplication, and dead letters. It is intended for local development and tests; it does not survive process restarts or provide distributed delivery.
 
-Queues may expose cancel(id) for cooperative cancellation. A running handler must honor its JobContext signal; cancellation is treated as a control decision rather than a failed delivery.
+Queues may expose cancel(id) for cooperative cancellation. A running handler must honor its JobContext signal; cancellation is treated as a control decision rather than a failed delivery. Long-running handlers can call `context.reportProgress({ completed, total })`; observers receive only bounded progress metadata, never the job payload.
 
 Pass onEvent to InMemoryJobQueue for value-free lifecycle telemetry: dispatch, start, success, retry, dead-letter, and cancel events. Observer failures are isolated from delivery.
 
 Job names are stable transport identities. A durable adapter should persist the job name, encoded payload, and delivery options—not the handler closure—and a worker should register the same definitions with `JobRegistry`:
 
 ```ts
-import { JobRegistry, decodeJob, encodeJob } from "starpod";
+import { JobRegistry, JobWorker, encodeJob } from "starpod";
 
 const envelope = encodeJob(sendWelcomeEmail, { userId: user.id }, {
   maxAttempts: 3,
@@ -561,12 +631,17 @@ await durable.publish(envelope);
 const registry = new JobRegistry();
 registry.register(sendWelcomeEmail);
 
-const definition = registry.resolve(message.name);
-const payload = decodeJob(definition, message.payload);
-await definition.handle(payload, context);
+const worker = new JobWorker(registry);
+await worker.run({
+  id: brokerDelivery.id,
+  name: envelope.name,
+  payload: envelope.payload,
+  attempt: brokerDelivery.attempt,
+  timeoutMs: envelope.options.timeoutMs,
+});
 ```
 
-Use a `codec` whenever payloads cross a process or persistence boundary. This keeps local jobs simple while making serialization, worker registration, and failure semantics explicit for production adapters.
+The broker adapter maps its delivery ID and attempt count into `JobWorker`; Starpod does not acknowledge or retry messages behind the adapter's back. Use a `codec` whenever payloads cross a process or persistence boundary. This keeps local jobs simple while making serialization, worker registration, and failure semantics explicit for production adapters.
 
 `InMemoryJobQueue` exposes `dispose()`, so registering it as an application singleton lets Starpod drain it during normal shutdown.
 
@@ -584,7 +659,7 @@ await dispatcher.dispatch(sendWelcomeEmail, { userId: user.id }, {
 });
 ```
 
-The broker adapter remains responsible for durability, visibility timeouts, acknowledgement, retries, consumer groups, and dead-letter storage.
+The dispatcher also accepts `onEvent` for value-free dispatch telemetry. The broker adapter remains responsible for durability, visibility timeouts, acknowledgement, retries, consumer groups, and dead-letter storage.
 
 For local work and tests, `InMemoryScheduler` dispatches typed jobs on a fixed-delay interval through a `JobQueue`:
 
@@ -598,7 +673,7 @@ const task = scheduler.schedule(refreshSearch, {}, {
 task.cancel();
 ```
 
-It prevents overlapping runs, reports dispatch failures through an explicit callback, and cleans up timers through `dispose()`. It is not a durable scheduler or a cron engine; use a deployment-specific scheduler adapter when jobs must survive restarts or coordinate across instances.
+It prevents overlapping runs, reports dispatch failures through an explicit callback, emits safe schedule/start/success/failure/cancel events, and cleans up timers through `dispose()`. It is not a durable scheduler or a cron engine; use a deployment-specific scheduler adapter when jobs must survive restarts or coordinate across instances.
 
 `schedule` treats its second argument as the payload value, including when that value is a function. Use `scheduleFactory` when a fresh payload should be generated for each run:
 
@@ -627,6 +702,18 @@ cache.invalidateTag(`user:${userId}`);
 The memory implementation supports TTLs, bounded LRU storage, namespaces, tags, and concurrent-loader coalescing. It is process-local. A distributed `CacheStore` implementation must provide the same `getOrSet` stampede-protection contract over Redis or another shared cache rather than silently falling back to an uncoordinated read-then-write sequence.
 
 Pass `onEvent` to `MemoryCache` for value-free cache telemetry. Events identify hits, misses, writes, deletes, tag invalidations, and loader coalescing; observer failures never change cache behavior.
+
+For stampede protection or other cross-process critical sections, use the explicit `LockStore` boundary:
+
+```ts
+import { withLock } from "starpod";
+
+const value = await withLock(redisLocks, `user:${userId}`, () => rebuildUser(userId), {
+  ttlMs: 10_000,
+});
+```
+
+`MemoryLockStore` is bounded and process-local. A distributed implementation must make `acquire` atomic and keep lease ownership safe; Starpod does not claim that an in-memory lock coordinates multiple instances.
 
 ## Observability
 
@@ -660,6 +747,23 @@ const server = await bootstrap(app, {
 });
 ```
 
+If the application already installs OpenTelemetry, Starpod includes dependency-free bridges for its tracing and metrics interfaces. SDK/exporter setup remains application-owned:
+
+```ts
+import { openTelemetryMetrics, openTelemetryTracer } from "starpod";
+import { context, propagation, trace, SpanStatusCode } from "@opentelemetry/api";
+
+const server = await bootstrap(app, {
+  tracer: openTelemetryTracer({ context, trace, propagation, statusCodes: {
+    ok: SpanStatusCode.OK,
+    error: SpanStatusCode.ERROR,
+  } }),
+  metrics: openTelemetryMetrics(meterProvider),
+});
+```
+
+The adapter preserves Starpod's safe scalar attribute and metric-label boundary while using the application's configured OpenTelemetry providers. The OpenTelemetry API package and exporters remain optional application dependencies.
+
 For local debugging, pass a bounded `MemoryInspector`. It records method, registered route template, status, request ID, duration, and safe error codes—never request bodies, credentials, headers, or query values:
 
 ```ts
@@ -669,6 +773,7 @@ const inspector = new MemoryInspector({ maxEvents: 500 });
 const server = await bootstrap(app, { inspector });
 
 console.log(inspector.snapshot());
+console.log(inspector.query({ requestId: "request-id", limit: 20 }));
 ```
 
 Conservative API security headers and a 10 MiB request-body limit are enabled by default. Override the limit explicitly for larger uploads; Elysia's server-level limit also protects requests without a declared Content-Length:
@@ -748,7 +853,39 @@ const server = await bootstrap(app, {
 });
 ```
 
-The hook emits standard `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers plus `Retry-After` on rejected requests. Legacy `X-RateLimit-*` aliases are also emitted during the alpha period. A custom `RateLimitStore` must make `consume` atomic for its deployment, such as with Redis or another shared data store.
+The hook emits standard `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers plus `Retry-After` on rejected requests. Legacy `X-RateLimit-*` aliases are also emitted during the alpha period. A custom `RateLimitStore` must make `consume` atomic for its deployment, such as with Redis or another shared data store. Pass `onEvent` for value-free decision telemetry; identities and keys are never included.
+
+When an application is behind a reverse proxy, resolve the address for an abuse-protection key with `clientIp(request, { peerAddress, trustProxy })`. Forwarded headers are ignored by default; only an explicitly trusted direct peer may contribute a validated `X-Forwarded-For` chain. The hosting adapter must provide the actual socket peer address—never treat an arbitrary request header as that value.
+
+For password or token login endpoints, use `BruteForceGuard` around the authentication operation:
+
+```ts
+import { BruteForceGuard } from "starpod";
+
+const loginGuard = new BruteForceGuard({
+  maxFailures: 5,
+  windowMs: 15 * 60_000,
+  lockoutMs: 15 * 60_000,
+});
+
+const user = await loginGuard.run(`${email}:${ipAddress}`, () => authenticate(email, password));
+```
+
+The built-in store is bounded and process-local. Use an atomic shared `BruteForceStore` for multiple instances, and choose a privacy-preserving identity key appropriate to the endpoint. The guard does not replace account lockout policy, CAPTCHA, or identity-provider controls.
+
+For downloads or other temporary capabilities, sign an absolute URL with an application secret:
+
+```ts
+import { createSignedUrl, verifySignedUrl } from "starpod";
+
+const url = await createSignedUrl("https://cdn.example/file.pdf", config.urlSecret, {
+  expiresAt: Date.now() + 5 * 60_000,
+});
+
+if (!(await verifySignedUrl(request.url, config.urlSecret))) throw Unauthorized();
+```
+
+The helper signs the complete canonical URL with HMAC-SHA-256, requires a 32-byte secret, rejects URL credentials and duplicate signature parameters, and treats the expiry as exclusive. It does not grant authorization by itself; the application must still check ownership and access policy.
 
 ## CLI diagnostics
 
@@ -762,6 +899,8 @@ starpod doctor --json
 ```
 
 `doctor` checks the package module/dependency setup, required application files, supported `NODE_ENV`, Bun version, environment-file ignore rules, and the architecture report when `src/app.ts` is available. Warnings are reported without failing CI; blocking findings return a non-zero exit code.
+
+The lifecycle commands stay thin and visible: `starpod dev` runs `bun --watch src/main.ts`, `starpod start` runs `bun src/main.ts`, and `starpod test`, `starpod check`, and `starpod build` delegate to the matching scripts in the application package. `starpod routes --json` exposes the native route manifest for CI or tooling.
 
 ## Testing
 
@@ -779,6 +918,8 @@ await testApp.dispose();
 ```
 
 `dispose()` is idempotent and works without opening a network port. Tests remain responsible for choosing database, queue, clock, mail, and storage fakes.
+
+Run the reproducible local performance harness with `bun run bench`; use `bun run bench -- --json` for machine-readable output. It measures native Elysia request handling, explicit DI resolution, and memory-cache reads using the current Bun/runtime environment. Results are diagnostic measurements, not universal production claims or a release threshold.
 
 Run the framework checks and release build with:
 

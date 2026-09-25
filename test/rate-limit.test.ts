@@ -117,4 +117,34 @@ describe("rate limiting", () => {
     })(new Elysia()).get("/", () => "ok");
     expect((await oversized.handle(new Request("http://localhost/"))).status).toBe(500);
   });
+
+  test("emits safe decisions and rejects malformed store responses", async () => {
+    const events: import("../src/kernel/security/rate-limit").RateLimitEvent[] = [];
+    const app = rateLimit({
+      limit: 2,
+      windowMs: 100,
+      key: () => "client",
+      onEvent: (event) => {
+        events.push(event);
+        throw new Error("observer failure");
+      },
+    })(new Elysia()).get("/", () => "ok");
+
+    expect((await app.handle(new Request("http://localhost/"))).status).toBe(200);
+    expect(events).toEqual([expect.objectContaining({
+      operation: "decision",
+      name: "default",
+      allowed: true,
+      limit: 2,
+      remaining: 1,
+    })]);
+
+    const malformed = rateLimit({
+      limit: 1,
+      windowMs: 100,
+      key: () => "client",
+      store: { consume: () => ({ allowed: true, limit: 1, remaining: 2, resetAt: Date.now() }) },
+    })(new Elysia()).get("/", () => "ok");
+    expect((await malformed.handle(new Request("http://localhost/"))).status).toBe(500);
+  });
 });

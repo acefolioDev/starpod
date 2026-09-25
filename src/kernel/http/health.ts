@@ -17,6 +17,7 @@ export function healthRoutes(app: AnyElysia, options: HealthRoutesOptions = {}) 
   const readinessPath = options.readinessPath ?? "/health/ready";
   const checks = options.checks ?? [];
   const names = new Set<string>();
+  let stopping = false;
 
   for (const check of checks) {
     if (names.has(check.name)) throw new Error(`Duplicate health check: ${check.name}`);
@@ -26,10 +27,18 @@ export function healthRoutes(app: AnyElysia, options: HealthRoutesOptions = {}) 
     names.add(check.name);
   }
 
+  app.onStop(() => {
+    stopping = true;
+  });
+
   app.get(livenessPath, () => ({ status: "ok" as const }), {
     response: t.Object({ status: t.Literal("ok") }),
   });
   return app.get(readinessPath, async ({ set }) => {
+    if (stopping) {
+      set.status = 503;
+      return { status: "not_ready" as const, checks: {} };
+    }
     const outcomes = await Promise.all(checks.map(async (check) => {
       try {
         await runCheck(check);

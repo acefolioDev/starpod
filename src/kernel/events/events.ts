@@ -23,9 +23,16 @@ export type EventCodec<TPayload> = {
 };
 
 export type EventEnvelope = {
+  readonly id?: string;
   readonly name: string;
   readonly version?: string;
   readonly payload: JsonValue;
+};
+
+/** Atomic duplicate-delivery boundary for a durable event consumer. */
+export type EventIdempotencyStore = {
+  /** Run only once for an ID; failed work must remain eligible for retry. */
+  runOnce(id: string, work: () => Promise<void>): void | Promise<void>;
 };
 
 export type EventSubscription = {
@@ -108,6 +115,28 @@ export class EventDispatcher<TEvents extends EventMap> {
   }
 }
 
+/** Decode broker-delivered envelopes and pass them through typed handlers. */
+export class EventConsumer<TEvents extends EventMap> {
+  constructor(
+    private readonly registry: EventRegistry<TEvents>,
+    private readonly bus: EventBus<TEvents>,
+    private readonly options: { readonly idempotency?: EventIdempotencyStore } = {},
+  ) {}
+
+  async consume(envelope: EventEnvelope): Promise<void> {
+    if (envelope.id !== undefined) validateEventId(envelope.id);
+    assertJsonValue(envelope.payload, "event payload");
+    const name = envelope.name as keyof TEvents & string;
+    const payload = this.registry.decode(name, envelope.payload, envelope.version);
+    const deliver = () => this.bus.emit(name, payload);
+    if (envelope.id !== undefined && this.options.idempotency) {
+      await this.options.idempotency.runOnce(envelope.id, deliver);
+    } else {
+      await deliver();
+    }
+  }
+}
+
 function validateEventName(name: string) {
   if (!name || name.length > 128 || name.includes("\n") || name.includes("\r")) {
     throw new Error("event name must be a non-empty single-line string of at most 128 characters");
@@ -118,6 +147,12 @@ function validateEventVersion(version: string | undefined) {
   if (version !== undefined &&
     (!version || version.length > 32 || !/^[A-Za-z0-9._-]+$/.test(version))) {
     throw new Error("event version must contain only letters, numbers, dots, underscores, or hyphens");
+  }
+}
+
+function validateEventId(id: string) {
+  if (!id || id.length > 256 || /[\r\n]/.test(id)) {
+    throw new Error("event id must be a non-empty single-line string of at most 256 characters");
   }
 }
 

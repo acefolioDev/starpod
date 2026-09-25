@@ -34,7 +34,16 @@ export async function scaffold(target: string) {
     await cp(gitignoreSrc, gitignoreDest);
   }
 
+  for (const file of ["Dockerfile", ".dockerignore"] as const) {
+    const source = join(templateRoot, file);
+    const destination = join(target, file);
+    if (!(await Bun.file(destination).exists()) && (await Bun.file(source).exists())) {
+      await cp(source, destination);
+    }
+  }
+
   await mergePackage(pkgPath, target);
+  await copyKubernetesManifest(pkgPath, target);
   console.log("\n  ◆  starpod project ready — hello is lit\n  │    bun run dev\n");
 }
 
@@ -104,6 +113,23 @@ async function mergePackage(pkgPath: string, target: string) {
   if (missing.length === 0) return;
 
   await Bun.$`bun add -d ${missing}`.cwd(target);
+}
+
+async function copyKubernetesManifest(pkgPath: string, target: string) {
+  const destination = join(target, "deploy/kubernetes.yaml");
+  if (await Bun.file(destination).exists()) return;
+  const template = join(templateRoot, "deploy/kubernetes.yaml");
+  if (!(await Bun.file(template).exists()) || !(await Bun.file(pkgPath).exists())) return;
+  const pkg = JSON.parse(await Bun.file(pkgPath).text()) as { name?: string };
+  const name = normalizeApplicationName(pkg.name);
+  await mkdir(join(target, "deploy"), { recursive: true });
+  const source = await Bun.file(template).text();
+  await writeFile(destination, source.replaceAll("starpod-app", name));
+}
+
+function normalizeApplicationName(value: string | undefined) {
+  const name = (value ?? "starpod-app").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return name.slice(0, 52) || "starpod-app";
 }
 
 export async function findInstallTarget(starpodRoot: string): Promise<string | null> {

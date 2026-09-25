@@ -61,6 +61,30 @@ describe("InMemoryJobQueue", () => {
     await queue.close();
   });
 
+  test("reports bounded progress without exposing job payloads", async () => {
+    const events: import("../src/kernel/jobs/jobs").JobEvent[] = [];
+    const queue = new InMemoryJobQueue({
+      idFactory: () => "progress-job",
+      onEvent: (event) => events.push(event),
+    });
+
+    await queue.dispatch({
+      name: "progress-task",
+      handle: (_, context) => context.reportProgress({ completed: 2, total: 3 }),
+    }, { secret: "payload" });
+    await queue.awaitIdle();
+
+    expect(events).toContainEqual({
+      operation: "progress",
+      id: "progress-job",
+      name: "progress-task",
+      attempt: 1,
+      completed: 2,
+      total: 3,
+    });
+    await queue.close();
+  });
+
   test("retries with the next attempt and records dead letters", async () => {
     const queue = new InMemoryJobQueue();
     const attempts: number[] = [];
@@ -212,5 +236,4 @@ describe("InMemoryJobQueue", () => {
     );
   });
 });
-
 

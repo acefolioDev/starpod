@@ -15,6 +15,13 @@ export type MemoryInspectorOptions = {
   readonly now?: () => number;
 };
 
+export type InspectorQuery = {
+  readonly type?: string;
+  readonly requestId?: string;
+  readonly correlationId?: string;
+  readonly limit?: number;
+};
+
 /** Bounded, process-local event history for development and tests. */
 export class MemoryInspector implements Inspector {
   private readonly history: InspectorRecord[] = [];
@@ -41,7 +48,33 @@ export class MemoryInspector implements Inspector {
     return Object.freeze([...this.history]);
   }
 
+  query(options: InspectorQuery = {}): readonly InspectorRecord[] {
+    validateQuery(options);
+    const matches = this.history.filter((event) =>
+      (options.type === undefined || event.type === options.type) &&
+      (options.requestId === undefined || event.requestId === options.requestId) &&
+      (options.correlationId === undefined || event.correlationId === options.correlationId),
+    );
+    const limit = options.limit ?? matches.length;
+    return Object.freeze(matches.slice(Math.max(0, matches.length - limit)));
+  }
+
   clear() {
     this.history.length = 0;
+  }
+}
+
+function validateQuery(options: InspectorQuery) {
+  for (const [label, value] of [
+    ["type", options.type],
+    ["requestId", options.requestId],
+    ["correlationId", options.correlationId],
+  ] as const) {
+    if (value !== undefined && (!value || /[\r\n]/.test(value))) {
+      throw new Error(`Inspector ${label} must be a non-empty single-line string`);
+    }
+  }
+  if (options.limit !== undefined && (!Number.isInteger(options.limit) || options.limit < 1)) {
+    throw new Error("Inspector query limit must be a positive integer");
   }
 }

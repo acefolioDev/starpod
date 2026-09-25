@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { clientIp } from "../src/kernel/http/client-address";
 import { correlationIdFrom, requestIdFrom } from "../src/kernel/http/http";
 
 describe("HTTP request identity", () => {
@@ -23,5 +24,26 @@ describe("HTTP request identity", () => {
     expect(correlationIdFrom(new Headers(), "request-1")).toBe("request-1");
     expect(correlationIdFrom(unsafe("bad\nvalue"), "request-1"))
       .toBe("request-1");
+  });
+
+  test("uses the peer address unless an explicit trusted proxy forwards a valid chain", () => {
+    const request = new Request("http://localhost", {
+      headers: { "x-forwarded-for": "203.0.113.10, 10.0.0.2" },
+    });
+
+    expect(clientIp(request, { peerAddress: "198.51.100.4" })).toBe("198.51.100.4");
+    expect(clientIp(request, {
+      peerAddress: "10.0.0.3",
+      trustProxy: (address) => address.startsWith("10."),
+    })).toBe("203.0.113.10");
+  });
+
+  test("ignores malformed forwarding chains and rejects invalid peer addresses", () => {
+    const request = new Request("http://localhost", {
+      headers: { "x-forwarded-for": "203.0.113.10, forged" },
+    });
+
+    expect(clientIp(request, { peerAddress: "10.0.0.3", trustProxy: true })).toBe("10.0.0.3");
+    expect(() => clientIp(request, { peerAddress: "not-an-ip" })).toThrow("valid IPv4 or IPv6");
   });
 });

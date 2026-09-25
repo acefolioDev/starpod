@@ -38,8 +38,10 @@ export async function doctor(options: DoctorOptions = {}): Promise<DoctorReport>
 
   if (packageJson) checkPackage(packageJson, findings);
   await checkProjectFiles(root, findings);
-  checkEnvironment(options.environment ?? process.env.NODE_ENV, findings);
+  const environment = options.environment ?? process.env.NODE_ENV;
+  checkEnvironment(environment, findings);
   await checkSecretsIgnore(root, findings);
+  if (environment === "production") await checkProductionFiles(root, packageJson, findings);
 
   if (options.app) {
     const architecture = await auditArchitecture(options.app, { root });
@@ -136,6 +138,22 @@ async function checkSecretsIgnore(root: string, findings: DoctorFinding[]) {
   const ignoresEnv = text.split(/\r?\n/).some((line) => [".env", ".env.*", ".env/"].includes(line.trim()));
   if (!ignoresEnv) {
     findings.push({ severity: "warning", code: "ENV_IGNORE", message: ".gitignore does not ignore .env files; confirm secrets cannot be committed" });
+  }
+}
+
+async function checkProductionFiles(root: string, pkg: PackageJson | undefined, findings: DoctorFinding[]) {
+  if (!(await Bun.file(join(root, "bun.lock")).exists())) {
+    findings.push({ severity: "warning", code: "LOCKFILE", message: "bun.lock is missing; production dependency installs are not reproducible" });
+  }
+  const dockerfile = await Bun.file(join(root, "Dockerfile")).exists();
+  if (!dockerfile) {
+    findings.push({ severity: "warning", code: "CONTAINER_FILE", message: "Dockerfile is missing; verify the deployment artifact is defined elsewhere" });
+  } else if (!(await Bun.file(join(root, ".dockerignore")).exists())) {
+    findings.push({ severity: "warning", code: "CONTAINER_IGNORE", message: ".dockerignore is missing; verify secrets and development files are excluded from images" });
+  }
+  const start = isRecord(pkg?.scripts) && typeof pkg.scripts.start === "string" ? pkg.scripts.start : undefined;
+  if (start?.includes("--watch")) {
+    findings.push({ severity: "warning", code: "WATCH_START", message: 'production start script enables Bun watch mode; use a stable process command' });
   }
 }
 

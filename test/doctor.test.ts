@@ -37,6 +37,28 @@ describe("project doctor", () => {
     expect(report.findings).toContainEqual(expect.objectContaining({ code: "START_SCRIPT", severity: "warning" }));
   });
 
+  test("reports reproducibility and deployment warnings in explicit production mode", async () => {
+    const root = await makeRoot();
+    await mkdir(join(root, "src", "features", "hello"), { recursive: true });
+    await mkdir(join(root, "src", "infra"), { recursive: true });
+    await writeFile(join(root, "package.json"), JSON.stringify({
+      type: "module",
+      dependencies: { elysia: "^1.4.0" },
+      scripts: { start: "bun --watch src/main.ts" },
+    }));
+    await writeFile(join(root, "src", "app.ts"), "export {};");
+    await writeFile(join(root, "src", "main.ts"), "export {};");
+    await writeFile(join(root, ".gitignore"), ".env\n.env.*\n");
+
+    const report = await doctor({ root, environment: "production" });
+
+    expect(report.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "LOCKFILE", severity: "warning" }),
+      expect.objectContaining({ code: "CONTAINER_FILE", severity: "warning" }),
+      expect.objectContaining({ code: "WATCH_START", severity: "warning" }),
+    ]));
+  });
+
   test("rejects invalid environments", async () => {
     const report = await doctor({ root: await makeRoot(), environment: "prod" });
     expect(report.findings).toContainEqual(expect.objectContaining({ code: "NODE_ENV", severity: "error" }));

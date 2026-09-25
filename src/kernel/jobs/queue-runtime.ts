@@ -6,6 +6,7 @@ import type {
   JobObserver,
   JobReceipt,
 } from "./contracts";
+import { emitJobProgress } from "./progress";
 
 export type QueuedJob = {
   readonly id: string;
@@ -132,7 +133,7 @@ async function executeJob(state: QueueRuntime, job: QueuedJob) {
   observeEvent(state, { operation: "start", id: job.id, name: job.definition.name, attempt: job.attempt });
   let completed = false;
   try {
-    await runWithTimeout(job, controller);
+    await runWithTimeout(state, job, controller);
     completed = true;
     observeEvent(state, { operation: "success", id: job.id, name: job.definition.name, attempt: job.attempt });
   } catch (error) {
@@ -171,12 +172,19 @@ async function executeJob(state: QueueRuntime, job: QueuedJob) {
   }
 }
 
-async function runWithTimeout(job: QueuedJob, controller: AbortController) {
+async function runWithTimeout(state: QueueRuntime, job: QueuedJob, controller: AbortController) {
   const context: JobContext = {
     id: job.id,
     name: job.definition.name,
     attempt: job.attempt,
     signal: controller.signal,
+    reportProgress: (progress) => emitJobProgress(
+      state.onEvent,
+      job.id,
+      job.definition.name,
+      job.attempt,
+      progress,
+    ),
   };
   const work = Promise.resolve(job.definition.handle(job.payload, context));
   if (job.timeoutMs === undefined) return await work;

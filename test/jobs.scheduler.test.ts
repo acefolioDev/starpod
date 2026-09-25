@@ -130,5 +130,29 @@ describe("InMemoryScheduler", () => {
     expect(received).toBe("generated");
     await queue.close();
   });
-});
 
+  test("emits scheduler lifecycle events without changing fixed-delay behavior", async () => {
+    const queue = new InMemoryJobQueue();
+    const events: string[] = [];
+    const scheduler = new InMemoryScheduler(queue, {
+      onEvent: (event) => events.push(`${event.operation}:${event.name}`),
+    });
+    let release!: () => void;
+    const done = new Promise<void>((resolve) => { release = resolve; });
+    const task = scheduler.schedule({
+      name: "observable-schedule",
+      handle: () => release(),
+    }, {}, { intervalMs: 1, runImmediately: true });
+
+    await done;
+    task.cancel();
+    await scheduler.dispose();
+    await queue.awaitIdle();
+    await queue.close();
+
+    expect(events).toContain("schedule:observable-schedule");
+    expect(events).toContain("start:observable-schedule");
+    expect(events).toContain("success:observable-schedule");
+    expect(events).toContain("cancel:observable-schedule");
+  });
+});

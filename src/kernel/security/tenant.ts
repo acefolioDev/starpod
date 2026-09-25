@@ -2,6 +2,7 @@ import type { AnyElysia } from "elysia";
 import type Elysia from "elysia";
 import { BadRequest, Forbidden } from "../errors/errors";
 import type { StarpodSingleton } from "../http/http";
+import type { CacheSetOptions, CacheStore } from "../data/cache";
 
 export type Tenant = {
   readonly id: string;
@@ -53,6 +54,21 @@ export function tenantKey(tenantId: string, key: string): string {
   return `${encodeURIComponent(tenantId)}:${encodeURIComponent(key)}`;
 }
 
+/** Return a cache view that scopes every key and tag to one tenant. */
+export function tenantCache(cache: CacheStore, tenant: Tenant): CacheStore {
+  assertTenant(tenant);
+  const key = (value: string) => tenantKey(tenant.id, value);
+  return {
+    get: <T>(cacheKey: string) => cache.get<T>(key(cacheKey)),
+    set: <T>(cacheKey: string, value: T, options?: CacheSetOptions) =>
+      cache.set(key(cacheKey), value, scopeCacheOptions(options, key)),
+    getOrSet: <T>(cacheKey: string, loader: () => T | Promise<T>, options?: CacheSetOptions) =>
+      cache.getOrSet(key(cacheKey), loader, scopeCacheOptions(options, key)),
+    delete: (cacheKey: string) => cache.delete(key(cacheKey)),
+    invalidateTag: (tag: string) => cache.invalidateTag(key(tag)),
+  };
+}
+
 function assertTenant<TTenant extends Tenant>(tenant: TTenant) {
   validatePart(tenant.id, "tenant id");
 }
@@ -61,4 +77,9 @@ function validatePart(value: string, label: string) {
   if (!value || value.includes("\n") || value.includes("\r")) {
     throw BadRequest(`Invalid ${label}`);
   }
+}
+
+function scopeCacheOptions(options: CacheSetOptions | undefined, key: (value: string) => string) {
+  if (!options?.tags) return options;
+  return { ...options, tags: options.tags.map(key) };
 }

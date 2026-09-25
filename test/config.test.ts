@@ -17,6 +17,28 @@ describe("configuration", () => {
     expect(config).toEqual({ port: 4000, debug: false, environment: "test" });
   });
 
+  test("parses safe HTTP URLs and explicit duration units", () => {
+    const config = defineConfig({
+      serviceUrl: env.url("SERVICE_URL", { required: true }),
+      timeoutMs: env.duration("TIMEOUT", { required: true }),
+    }, { SERVICE_URL: "https://api.example.test/v1", TIMEOUT: "1.5s" });
+
+    expect(config).toEqual({ serviceUrl: "https://api.example.test/v1", timeoutMs: 1_500 });
+    expect(() => defineConfig({ url: env.url("URL") }, { URL: "postgres://db" }))
+      .toThrow("HTTP(S) URL");
+    expect(() => defineConfig({ timeout: env.duration("TIMEOUT") }, { TIMEOUT: "5" }))
+      .toThrow("duration such as");
+  });
+
+  test("validates typed defaults with the same parser rules", () => {
+    expect(() => defineConfig({ port: env.number("PORT", { default: 0, min: 1 }) }))
+      .toThrow("at least 1");
+    expect(() => defineConfig({ url: env.url("URL", { default: "postgres://db" }) }))
+      .toThrow("HTTP(S) URL");
+    expect(() => defineConfig({ mode: env.enum("MODE", ["safe"] as const, { default: "fast" as "safe" }) }))
+      .toThrow("one of: safe");
+  });
+
   test("reports all invalid values together", () => {
     expect(() =>
       defineConfig(
