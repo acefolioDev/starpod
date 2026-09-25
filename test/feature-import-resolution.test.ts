@@ -1,9 +1,67 @@
 import { describe, expect, test } from "bun:test";
 import { application, pod } from "../src/kernel/application/feature";
 import { bootstrap, disposeBootstrap } from "../src/kernel/application/bootstrap";
+import { injectHandler } from "../src/kernel/http/handler";
 import { REQUEST_CONTEXT, type StarpodElysia } from "../src/kernel/http/http";
 
 describe("feature import resolution", () => {
+  test("rejects duplicate feature imports", () => {
+    const owner = pod({
+      name: "duplicateowner",
+      prefix: "/duplicateowner",
+      controller: class OwnerController {
+        routes(app: StarpodElysia) {
+          return app;
+        }
+      },
+    });
+    const consumer = pod({
+      name: "duplicateconsumer",
+      prefix: "/duplicateconsumer",
+      controller: class ConsumerController {
+        routes(app: StarpodElysia) {
+          return app;
+        }
+      },
+      imports: [owner, owner],
+    });
+
+    expect(() => application({ features: [consumer, owner] })).toThrow("Duplicate feature import: duplicateowner");
+  });
+
+  test("does not expose an export unless the consumer imports its feature", async () => {
+    class SharedService {}
+    class OwnerController {
+      routes(app: StarpodElysia) {
+        return app;
+      }
+    }
+    class ConsumerController {
+      static readonly inject = [SharedService] as const;
+
+      constructor(_service: SharedService) {}
+
+      routes(app: StarpodElysia) {
+        return app;
+      }
+    }
+    const owner = pod({
+      name: "boundaryowner",
+      prefix: "/boundaryowner",
+      controller: OwnerController,
+      providers: [SharedService],
+      exports: [SharedService],
+    });
+    const consumer = pod({
+      name: "boundaryconsumer",
+      prefix: "/boundaryconsumer",
+      controller: ConsumerController,
+    });
+
+    await expect(bootstrap(application({ features: [consumer, owner] }), { printFeatures: false, seal: false }))
+      .rejects.toThrow("SharedService is not registered");
+  });
+
   test("rejects a local provider that shadows an imported export", () => {
     class SharedService {}
     const owner = pod({
@@ -104,7 +162,7 @@ describe("feature import resolution", () => {
     }
     class ImporterController {
       routes(app: StarpodElysia) {
-        return app.get("/", ({ resolve }) => resolve(RequestService).route());
+        return app.get("/", injectHandler([RequestService], (_, service) => service.route()));
       }
     }
     const owner = pod({

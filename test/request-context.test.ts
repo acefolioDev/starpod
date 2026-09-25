@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { bootstrap, disposeBootstrap } from "../src/kernel/application/bootstrap";
 import { application, pod } from "../src/kernel/application/feature";
+import { injectHandler } from "../src/kernel/http/handler";
 import { REQUEST_CONTEXT, type StarpodElysia, type StarpodRequestContext } from "../src/kernel/http/http";
 
 describe("constructor-injected request context", () => {
@@ -24,7 +25,7 @@ describe("constructor-injected request context", () => {
 
     class Controller {
       routes(app: StarpodElysia) {
-        return app.get("/", ({ resolve }) => resolve(RequestDetails).read());
+        return app.get("/", injectHandler([RequestDetails], (_, details) => details.read()));
       }
     }
 

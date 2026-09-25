@@ -167,7 +167,7 @@ Async providers are resolved with `resolveAsync()` internally during bootstrap. 
 Providers are singleton by default. Use a request scope when state must belong to one HTTP request, or a transient provider when each resolution must create a new instance:
 
 ```ts
-import type { StarpodElysia } from "starpod";
+import { injectHandler, type StarpodElysia } from "starpod";
 
 class RequestContext {
   static readonly lifetime = "request" as const;
@@ -181,14 +181,16 @@ class ExpensiveParser {
 
 class Controller {
   routes(app: StarpodElysia) {
-    return app.get("/", ({ resolve }) => resolve(RequestContext).startedAt);
+    return app.get("/", injectHandler([RequestContext], (_, context) => context.startedAt));
   }
 }
 ```
 
 Starpod rejects singleton providers that depend on request-scoped providers, preventing request state from being captured and reused across requests.
 
-Inside a native controller route, `resolve(Token)` uses the request's real child container. Use `resolveAsync(Token)` when a request-scoped provider exposes asynchronous `initialize()` work; initialization follows dependency order and is retried after a failed attempt. Request-scoped instances and lifecycle-aware transient instances are disposed by their owning scope; request resources remain alive until native streams or iterators finish, while singleton instances remain owned by their application or feature container. Tests can override application or feature providers with a real child scope at bootstrap:
+Use `injectHandler([Token], handler)` when a native route needs request-scoped dependencies. The token list is the route boundary's explicit dependency declaration; Starpod resolves each token from the request's real child container and passes the instances to the handler. The handler receives the normal Elysia context as its first argument, so schemas, params, bodies, responses, and native Elysia features remain available. The resolver is intentionally not exposed as a route-context service locator.
+
+Request-scoped instances and lifecycle-aware transient instances are disposed by their owning scope; request resources remain alive until native streams or iterators finish, while singleton instances remain owned by their application or feature container. Tests can override application or feature providers with a real child scope at bootstrap:
 
 Request-scoped services can receive native request data through ordinary constructor injection with `REQUEST_CONTEXT`; this is explicit DI, not ambient state:
 

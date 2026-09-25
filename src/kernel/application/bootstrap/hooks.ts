@@ -6,7 +6,8 @@ import {
   requestIdFrom,
   REQUEST_ID_HEADER,
 } from "../../http/http";
-import type { Container, InjectionToken } from "../../di/di";
+import type { Container } from "../../di/di";
+import { registerRequestResolver } from "../../http/request-dependencies";
 import type { Inspector } from "../../observability/inspector";
 import { pathFromUrl, traceContextFrom, type Logger, type Metrics, type Span } from "../../observability/observability";
 import { applySecurityHeaders, type SecurityHeadersOptions } from "../../security/security";
@@ -77,6 +78,7 @@ export function createBootstrapElysia(
       requestStartedAt.set(request, performance.now());
       set.headers[REQUEST_ID_HEADER] = requestId;
       set.headers[CORRELATION_ID_HEADER] = correlationId;
+      registerRequestResolver(request, (token) => requestContainerFor(request, route).resolveAsync(token));
       if (options.securityHeaders !== false) {
         applySecurityHeaders(set.headers, options.securityHeaders);
       }
@@ -99,12 +101,6 @@ export function createBootstrapElysia(
       return {
         requestId,
         correlationId,
-        resolve: <T>(token: InjectionToken<T>) => {
-          return requestContainerFor(request, route).resolve(token);
-        },
-        resolveAsync: async <T>(token: InjectionToken<T>) => {
-          return requestContainerFor(request, route).resolveAsync(token);
-        },
       };
     })
     .onError(async ({ error, request, set }) => {

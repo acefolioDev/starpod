@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { bootstrap, disposeBootstrap } from "../src/kernel/application/bootstrap";
 import { application, pod } from "../src/kernel/application/feature";
+import { injectHandler } from "../src/kernel/http/handler";
 import type { StarpodElysia } from "../src/kernel/http/http";
 
 describe("native request DI", () => {
@@ -12,7 +13,7 @@ describe("native request DI", () => {
 
     class Controller {
       routes(app: StarpodElysia) {
-        return app.get("/nested", ({ resolve }) => resolve(RootRequestContext).value);
+        return app.get("/nested", injectHandler([RootRequestContext], (_, context) => context.value));
       }
     }
 
@@ -43,7 +44,7 @@ describe("native request DI", () => {
 
     class Controller {
       routes(app: StarpodElysia) {
-        return app.get("/", ({ resolve }) => resolve(DynamicRequestContext).value);
+        return app.get("/", injectHandler([DynamicRequestContext], (_, context) => context.value));
       }
     }
 
@@ -85,14 +86,10 @@ describe("native request DI", () => {
 
     class Controller {
       routes(app: StarpodElysia) {
-        return app.get("/", ({ resolve }) => {
-          const first = resolve(RequestContext);
-          const second = resolve(RequestContext);
-          return { id: first.id, same: first === second };
-        }).get("/error", ({ resolve }) => {
-          resolve(RequestContext);
+        return app.get("/", injectHandler([RequestContext], (_, context) => ({ id: context.id, same: true })))
+          .get("/error", injectHandler([RequestContext], () => {
           throw new Error("request failed");
-        });
+          }));
       }
     }
 
@@ -127,7 +124,7 @@ describe("native request DI", () => {
 
     class Controller {
       routes(app: StarpodElysia) {
-        return app.get("/", ({ resolve }) => resolve(ApplicationRequestContext).id);
+        return app.get("/", injectHandler([ApplicationRequestContext], (_, context) => context.id));
       }
     }
 
@@ -162,10 +159,9 @@ describe("native request DI", () => {
 
     class Controller {
       routes(app: StarpodElysia) {
-        return app.get("/", async ({ resolveAsync }) => {
-          await resolveAsync(RequestTransaction);
+        return app.get("/", injectHandler([RequestTransaction], async () => {
           return { initialized: events.includes("initialize") };
-        });
+        }));
       }
     }
 
@@ -195,12 +191,12 @@ describe("native request DI", () => {
 
     class Controller {
       routes(app: StarpodElysia) {
-        return app.get("/", async function* ({ resolve }) {
-          resolve(StreamResource);
+        return app.get("/", injectHandler([StreamResource], async function* (_, resource) {
+          void resource;
           yield "first";
           await new Promise((done) => setTimeout(done, 5));
           yield "second";
-        });
+        }));
       }
     }
 

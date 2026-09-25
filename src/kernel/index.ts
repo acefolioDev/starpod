@@ -16,6 +16,7 @@ export * from "./data/locks";
 export * from "./data/idempotency";
 export * from "./di/di";
 export * from "./http/http";
+export * from "./http/handler";
 export * from "./http/content";
 export * from "./http/client-address";
 export * from "./http/http-client";

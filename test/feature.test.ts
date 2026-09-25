@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { application, pod } from "../src/kernel/application/feature";
 import { plugin } from "../src/kernel/application/plugins";
+import { injectHandler } from "../src/kernel/http/handler";
 import type { StarpodElysia } from "../src/kernel/http/http";
 import { bootstrap, disposeBootstrap } from "../src/kernel/application/bootstrap";
 
@@ -170,11 +171,7 @@ describe("application composition", () => {
     }
     class BController {
       routes(app: StarpodElysia) {
-        return app.get("/", ({ resolve }) => {
-          const first = resolve(RequestService);
-          const second = resolve(RequestService);
-          return { id: first.id, same: first === second };
-        });
+        return app.get("/", injectHandler([RequestService], (_, service) => ({ id: service.id, same: true })));
       }
     }
     const a = pod({

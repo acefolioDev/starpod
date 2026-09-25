@@ -95,6 +95,7 @@ export function application(input: {
   assertUnique(input.features.map((feature) => feature.prefix), "feature prefix");
   const features = new Set(input.features);
   for (const feature of input.features) {
+    assertUnique(feature.imports.map((imported) => imported.name), "feature import");
     const importedTokens = new Map<InjectionToken, Feature>();
     for (const imported of feature.imports) {
       if (!features.has(imported)) {

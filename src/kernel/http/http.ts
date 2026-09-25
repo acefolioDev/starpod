@@ -1,12 +1,9 @@
 import type Elysia from "elysia";
-import { token, type InjectionToken, type ProviderToken } from "../di/di";
+import { token, type ProviderToken } from "../di/di";
 import type { TraceContext } from "../observability/observability";
 
 export const REQUEST_ID_HEADER = "x-request-id";
 export const CORRELATION_ID_HEADER = "x-correlation-id";
-
-export type RequestResolver = <T>(token: InjectionToken<T>) => T;
-export type AsyncRequestResolver = <T>(token: InjectionToken<T>) => Promise<T>;
 
 export type StarpodRequestContext = {
   readonly request: Request;
@@ -25,8 +22,6 @@ export type StarpodSingleton = {
   readonly derive: {
     readonly requestId: string;
     readonly correlationId: string;
-    readonly resolve: RequestResolver;
-    readonly resolveAsync: AsyncRequestResolver;
   };
   readonly resolve: {};
 };

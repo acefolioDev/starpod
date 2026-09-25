@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { bootstrap, disposeBootstrap } from "../src/kernel/application/bootstrap";
 import { application, pod } from "../src/kernel/application/feature";
+import { injectHandler } from "../src/kernel/http/handler";
 import type { StarpodElysia } from "../src/kernel/http/http";
 
 describe("native Elysia responses", () => {
@@ -41,15 +42,15 @@ describe("native Elysia responses", () => {
     }
     class Controller {
       routes(app: StarpodElysia) {
-        return app.get("/", ({ resolve }) => {
-          resolve(Resource);
+        return app.get("/", injectHandler([Resource], (_, resource) => {
+          void resource;
           throw new Response(new ReadableStream({
             start(controller) {
               controller.enqueue("stream");
               controller.close();
             },
           }));
-        });
+        }));
       }
     }
 
