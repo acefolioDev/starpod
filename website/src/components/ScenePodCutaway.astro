@@ -1,0 +1,32 @@
+---
+import PodPanel from "./PodPanel.astro";
+---
+<section class="scene scene-pod" data-scene="pod" aria-labelledby="pod-title">
+  <div class="scene-heading">
+    <div><p class="section-kicker">SCENE 02 / FEATURE BOUNDARY</p><h2 id="pod-title">Give a feature a perimeter.</h2></div>
+    <p>A pod is a composition value—not a process, not a deployment unit. It names what belongs together and what may cross the edge.</p>
+  </div>
+  <div class="pod-cutaway">
+    <div class="pod-code-surface" data-draw-line>
+      <div class="code-top"><span>src/features/users/users.pod.ts</span><span>TS / 04</span></div>
+      <pre><code><span class="code-keyword">export const</span> users = <span class="code-function">pod</span>(&#123;
+  name: <span class="code-string">"users"</span>,
+  prefix: <span class="code-string">"/users"</span>,
+  controller: UsersController,
+  providers: [UsersService],
+  exports: [UserReader],
+&#125;);</code></pre>
+    </div>
+    <div class="pod-visual" data-pod-visual>
+      <div class="pod-visual-grid"></div>
+      <div class="edge-label edge-prefix">prefix <b>/users</b></div>
+      <div class="edge-label edge-controller">controller <b>routes(app)</b></div>
+      <div class="edge-label edge-providers">providers <b>private graph</b></div>
+      <div class="edge-label edge-exports">exports <b>UserReader</b></div>
+      <div class="pod-shell"><span class="shell-corner"></span><PodPanel /></div>
+      <div class="pod-connection connection-import"><span></span><small>imports / Clock</small></div>
+      <div class="pod-connection connection-export"><span></span><small>export edge</small></div>
+    </div>
+  </div>
+  <div class="pod-caption"><span class="caption-mark">↳</span><span>Application-owned boundary</span><span>Use <code>imports</code> / <code>exports</code> when a real feature dependency crosses the line.</span></div>
+</section>

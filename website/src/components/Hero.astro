@@ -1,0 +1,21 @@
+<section class="hero section-grid" id="top" aria-labelledby="hero-title">
+  <div class="hero-copy">
+    <p class="eyebrow"><span class="status-dot"></span> Bun-native application structure</p>
+    <h1 id="hero-title">Structure for<br /><em>Elysia.</em></h1>
+    <p class="hero-lede">Explicit DI, feature pods, and native routes for services that need a shape they can keep.</p>
+    <div class="hero-actions">
+      <a class="button button-primary" href="#get-started">Get the shape <span aria-hidden="true">↘</span></a>
+      <a class="button button-quiet" href="https://github.com/acefolioDev/starpod" target="_blank" rel="noreferrer">Read the source <span aria-hidden="true">↗</span></a>
+    </div>
+    <p class="alpha-note"><span>ALPHA / 0.1.x</span> Working alpha. Pin Starpod and Bun versions; APIs may change.</p>
+  </div>
+  <div class="hero-diagram" aria-label="Request, Starpod, and Elysia layers">
+    <div class="diagram-meta"><span>COMPOSITION MAP</span><span>01 / 05</span></div>
+    <div class="layer-stack" data-hero-stack>
+      <div class="layer layer-request"><span class="layer-index">01</span><span>HTTP Request</span><small>request id · headers · body</small></div>
+      <div class="layer layer-starpod"><span class="layer-index">02</span><span>Starpod</span><small>composition · DI · lifecycle</small></div>
+      <div class="layer layer-elysia"><span class="layer-index">03</span><span>Elysia</span><small>router · schemas · plugins · WS</small></div>
+    </div>
+    <div class="diagram-foot"><span class="pulse-line"></span><span>native surface preserved</span><span>↘</span></div>
+  </div>
+</section>

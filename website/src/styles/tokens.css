@@ -1,0 +1,20 @@
+:root {
+  --sp-bg: #0b0d12;
+  --sp-surface: #12151c;
+  --sp-surface-2: #171b24;
+  --sp-border: rgba(255, 255, 255, 0.1);
+  --sp-border-strong: rgba(255, 255, 255, 0.2);
+  --sp-text: #e8eaef;
+  --sp-muted: rgba(232, 234, 239, 0.62);
+  --sp-faint: rgba(232, 234, 239, 0.36);
+  --sp-accent: #d4a017;
+  --sp-accent-bright: #f1c34e;
+  --sp-elysia: #8b7cf6;
+  --sp-ready: #4ade80;
+  --sp-warn: #fbbf24;
+  --sp-radius: 8px;
+  --sp-font: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --sp-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --sp-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --sp-max: 1240px;
+}

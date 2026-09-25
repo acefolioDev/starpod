@@ -1,0 +1,15 @@
+<section class="scene scene-native" data-scene="native" aria-labelledby="native-title">
+  <div class="scene-heading">
+    <div><p class="section-kicker">SCENE 04 / NATIVE SURFACE</p><h2 id="native-title">Keep the engine you chose.</h2></div>
+    <p>Starpod composes around Elysia. Your controller receives the same app instance, so schemas, plugins, WebSockets, and streams stay native.</p>
+  </div>
+  <div class="native-diagram">
+    <div class="native-side-label left">composition enters</div>
+    <div class="native-side-label right">composition leaves</div>
+    <div class="native-wrapper wrapper-top"><span>Starpod</span><small>pod wiring · lifecycle</small></div>
+    <div class="native-band"><span class="band-index">ELY / 01</span><strong>Elysia</strong><span>router · schemas · plugins · ws · streams</span><i>native app instance</i></div>
+    <div class="native-wrapper wrapper-bottom"><span>Starpod</span><small>request scope · diagnostics</small></div>
+    <div class="native-code"><code>routes(app: StarpodElysia) &#123;</code><code>  return app.get(...);</code><code>&#125;</code></div>
+  </div>
+  <div class="preserved-row"><span><i></i> same instance</span><span><i></i> same route API</span><span><i></i> same response types</span></div>
+</section>

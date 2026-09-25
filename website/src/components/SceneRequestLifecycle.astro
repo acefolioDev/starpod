@@ -1,0 +1,22 @@
+<section class="scene scene-lifecycle" id="how-it-works" data-scene="request" aria-labelledby="lifecycle-title">
+  <div class="scene-heading">
+    <div><p class="section-kicker">SCENE 01 / REQUEST SCOPE</p><h2 id="lifecycle-title">A request gets a room.</h2></div>
+    <p>Scoped dependencies enter with the request and leave with it. No hidden container, no state left behind.</p>
+  </div>
+  <div class="lifecycle-stage">
+    <div class="stage-rail" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+    <div class="scope-ring scope-ring-app"><span class="ring-label">APP / singleton graph</span>
+      <div class="scope-ring scope-ring-feature"><span class="ring-label">FEATURE / pod graph</span>
+        <div class="scope-ring scope-ring-request"><span class="ring-label">REQUEST / child scope</span><span class="request-id">req_7f2a <i></i></span></div>
+      </div>
+    </div>
+    <div class="lifecycle-steps" role="list" aria-label="Request lifecycle">
+      <div class="lifecycle-step is-active" data-step="0" role="listitem"><b>01</b><span>bootstrap</span><small>graph ready</small></div>
+      <div class="lifecycle-step" data-step="1" role="listitem"><b>02</b><span>onRequest</span><small>context attached</small></div>
+      <div class="lifecycle-step" data-step="2" role="listitem"><b>03</b><span>requestScope()</span><small>child container</small></div>
+      <div class="lifecycle-step" data-step="3" role="listitem"><b>04</b><span>injectHandler</span><small>deps resolved</small></div>
+      <div class="lifecycle-step" data-step="4" role="listitem"><b>05</b><span>dispose</span><small>scope released</small></div>
+    </div>
+  </div>
+  <div class="boundary-callout"><span class="callout-bar"></span><div><p>Production boundary</p><strong>Request resources stay alive through native streams, then dispose with their owning scope.</strong></div><span class="callout-index">SCOPE / 01</span></div>
+</section>

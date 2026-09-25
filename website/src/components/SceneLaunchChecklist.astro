@@ -1,0 +1,18 @@
+<section class="scene scene-checklist" data-scene="checklist" aria-labelledby="checklist-title">
+  <div class="scene-heading">
+    <div><p class="section-kicker">SCENE 05 / LAUNCH CHECKLIST</p><h2 id="checklist-title">A little structure before lift-off.</h2></div>
+    <p>Useful checks for the boundaries Starpod actually owns. The rest belongs to your application and deployment.</p>
+  </div>
+  <div class="terminal-window">
+    <div class="terminal-head"><span class="terminal-lights"><i></i><i></i><i></i></span><span>starpod / preflight</span><span>alpha</span></div>
+    <div class="terminal-body">
+      <div class="terminal-command"><span>$</span> starpod <strong>seal</strong><em>architecture + DI graph</em><b>PASS</b></div>
+      <div class="terminal-command"><span>$</span> starpod <strong>doctor</strong><em>project + production hazards</em><b>PASS</b></div>
+      <div class="terminal-command"><span>GET</span> <strong>/health/live</strong><em>process liveness</em><b>READY</b></div>
+      <div class="terminal-command"><span>GET</span> <strong>/health/ready</strong><em>dependency readiness</em><b>READY</b></div>
+      <div class="terminal-command"><span>GET</span> <strong>/openapi.json</strong><em>JSON spec · UI later</em><b>READY</b></div>
+      <div class="terminal-cursor"><span>▌</span> launch boundary recorded</div>
+    </div>
+  </div>
+  <div class="terminal-foot"><span>Checks are signals, not a security or availability guarantee.</span><a href="https://github.com/acefolioDev/starpod" target="_blank" rel="noreferrer">inspect the contracts ↗</a></div>
+</section>

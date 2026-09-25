@@ -48,7 +48,9 @@
     "bench": "bun scripts/benchmark.ts",
     "check": "bun run check:lines && bun run typecheck && bun run check:examples && bun test",
     "seal": "bun run check",
-    "prepack": "bun run build"
+    "prepack": "bun run build",
+    "landing:dev": "cd website && bun run dev",
+    "landing:build": "cd website && bun run build"
   },
   "engines": {
     "bun": ">=1.4.0"

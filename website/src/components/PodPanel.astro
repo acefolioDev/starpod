@@ -1,0 +1,13 @@
+---
+const { compact = false } = Astro.props;
+---
+<div class:list={["pod-panel", { compact }]}>
+  <div class="pod-panel-top"><span class="pod-chip">POD</span><span class="pod-path">/users</span><span class="pod-live"><i></i> active</span></div>
+  <div class="pod-panel-name">users</div>
+  <div class="pod-panel-grid">
+    <span><b>controller</b><em>UsersController</em></span>
+    <span><b>providers</b><em>UsersService</em></span>
+    <span><b>exports</b><em>UserReader</em></span>
+    <span><b>imports</b><em>Clock</em></span>
+  </div>
+</div>

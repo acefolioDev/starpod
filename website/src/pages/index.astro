@@ -1,0 +1,27 @@
+---
+import LandingLayout from "../layouts/LandingLayout.astro";
+import Header from "../components/Header.astro";
+import Hero from "../components/Hero.astro";
+import SceneRequestLifecycle from "../components/SceneRequestLifecycle.astro";
+import ScenePodCutaway from "../components/ScenePodCutaway.astro";
+import SceneExplicitDI from "../components/SceneExplicitDI.astro";
+import SceneNativeElysia from "../components/SceneNativeElysia.astro";
+import SceneLaunchChecklist from "../components/SceneLaunchChecklist.astro";
+import Footer from "../components/Footer.astro";
+---
+<LandingLayout>
+  <Header />
+  <main id="main">
+    <Hero />
+    <div class="section-rule"><span>HOW THE PARTS HOLD</span><i></i><span>STARPOD / 0.1</span></div>
+    <SceneRequestLifecycle />
+    <ScenePodCutaway />
+    <SceneExplicitDI />
+    <SceneNativeElysia />
+    <SceneLaunchChecklist />
+  </main>
+  <Footer />
+  <script>
+    import("../scripts/landing-animations.ts").then(({ initLandingAnimations }) => initLandingAnimations());
+  </script>
+</LandingLayout>

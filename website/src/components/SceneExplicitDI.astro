@@ -1,0 +1,25 @@
+<section class="scene scene-di" data-scene="di" aria-labelledby="di-title">
+  <div class="scene-heading">
+    <div><p class="section-kicker">SCENE 03 / EXPLICIT DI</p><h2 id="di-title">Read the graph in the class.</h2></div>
+    <p>Static tuples are easy to typecheck, test, and run in Bun. The dependency is a value you can see—not metadata hidden in a transform.</p>
+  </div>
+  <div class="di-grid">
+    <div class="di-muted-panel">
+      <p class="panel-label">NOT IN THE GRAPH</p>
+      <div class="crossed-item"><span>decorators</span><i></i></div>
+      <div class="crossed-item"><span>reflection</span><i></i></div>
+      <div class="crossed-item"><span>service locator</span><i></i></div>
+      <div class="di-note">No magic at the route boundary.<br />No global singleton to discover.</div>
+    </div>
+    <div class="di-code-panel">
+      <div class="code-top"><span>report.service.ts</span><span>EXPLICIT / 01</span></div>
+      <pre class="di-code" aria-label="Explicit dependency injection example"><code><span class="code-keyword">export class</span> ReportService &#123;
+  <span class="di-token" data-di-token="tuple">static readonly needs = [<span class="code-type">Clock</span>] as const;</span>
+
+  <span class="code-function">constructor</span>(<span class="di-token" data-di-token="param">private readonly clock: <span class="code-type">Clock</span></span>) &#123;&#125;
+&#125;</code></pre>
+      <div class="di-link"><span class="di-link-line"></span><span>same token / one edge</span><span class="di-tick">1:1</span></div>
+    </div>
+  </div>
+  <div class="di-alias"><span>Also readable:</span> <code>static readonly inject = [Clock] as const;</code> <span class="alias-note">“inject” remains the canonical generated spelling.</span></div>
+</section>

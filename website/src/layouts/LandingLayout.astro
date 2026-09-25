@@ -1,0 +1,25 @@
+---
+import "../styles/tokens.css";
+import "../styles/global.css";
+
+const { title = "Starpod — Structure for Elysia on Bun", description = "Starpod adds explicit dependency injection, feature pods, lifecycle boundaries, and architecture checks around native Elysia routes on Bun." } = Astro.props;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#0b0d12" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content="/og.svg" />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <slot />
+  </body>
+</html>
